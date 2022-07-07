@@ -70,74 +70,30 @@
 //! key pair, and if the key generation messages were committed to some public ledger, it can
 //! create a new `SyncKeyGen`, handle all the messages in order, and compute its secret key share.
 
-use std::borrow::Borrow;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::{self, Debug, Formatter};
-use std::hash::Hash;
-use std::string::ToString;
-use std::sync::Arc;
-
-use failure::Fail;
-use rand::{self, Rng};
-use serde::{Deserialize, Serialize};
-
-use threshold_crypto::pairing::{CurveAffine, Field};
-use threshold_crypto::{
-    self,
+use bls::{
     error::Error as CryptoError,
+    group::{ff::Field, prime::PrimeCurveAffine},
     poly::{BivarCommitment, BivarPoly, Poly},
     serde_impl::FieldWrap,
-    Fr, G1Affine, PublicKeySet, SecretKeyShare,
+    Ciphertext, Fr, G1Affine, PublicKey, PublicKeySet, SecretKey, SecretKeyShare,
+};
+use failure::Fail;
+use serde::{Deserialize, Serialize};
+use std::{
+    borrow::Borrow,
+    collections::{BTreeMap, BTreeSet},
+    fmt::{self, Debug, Formatter},
+    hash::Hash,
+    ops::{AddAssign, Mul},
+    sync::Arc,
 };
 
 /// A peer node's unique identifier.
 pub trait NodeIdT: Eq + Ord + Clone + Debug + Hash + Send + Sync {}
 impl<N> NodeIdT for N where N: Eq + Ord + Clone + Debug + Hash + Send + Sync {}
 
-/// A cryptographic key that allows decrypting messages that were encrypted to the key's owner.
-pub trait SecretKey {
-    /// The decryption error type.
-    type Error: ToString;
-
-    /// Decrypts a ciphertext.
-    fn decrypt(&self, ct: &[u8]) -> Result<Vec<u8>, Self::Error>;
-}
-
-/// A cryptographic public key that allows encrypting messages to the key's owner.
-pub trait PublicKey {
-    /// The encryption error type.
-    type Error: ToString;
-    /// The corresponding secret key type. The secret key is known only to the key's owner.
-    type SecretKey: SecretKey;
-
-    /// Encrypts a message to this key's owner and returns the ciphertext.
-    fn encrypt<M: AsRef<[u8]>, R: Rng>(&self, msg: M, rng: &mut R) -> Result<Vec<u8>, Self::Error>;
-}
-
-impl SecretKey for threshold_crypto::SecretKey {
-    type Error = bincode::Error;
-
-    fn decrypt(&self, ct: &[u8]) -> Result<Vec<u8>, bincode::Error> {
-        self.decrypt(&bincode::deserialize(ct)?)
-            .ok_or_else(|| bincode::ErrorKind::Custom("Invalid ciphertext.".to_string()).into())
-    }
-}
-
-impl PublicKey for threshold_crypto::PublicKey {
-    type Error = bincode::Error;
-    type SecretKey = threshold_crypto::SecretKey;
-
-    fn encrypt<M: AsRef<[u8]>, R: Rng>(
-        &self,
-        msg: M,
-        rng: &mut R,
-    ) -> Result<Vec<u8>, bincode::Error> {
-        bincode::serialize(&self.encrypt_with_rng(rng, msg))
-    }
-}
-
 /// A map assigning to each node ID a public key, wrapped in an `Arc`.
-pub type PubKeyMap<N, PK = threshold_crypto::PublicKey> = Arc<BTreeMap<N, PK>>;
+pub type PubKeyMap<N, PK = PublicKey> = Arc<BTreeMap<N, PK>>;
 
 /// Returns a `PubKeyMap` corresponding to the given secret keys.
 ///
@@ -145,7 +101,7 @@ pub type PubKeyMap<N, PK = threshold_crypto::PublicKey> = Arc<BTreeMap<N, PK>>;
 pub fn to_pub_keys<'a, I, B, N: NodeIdT + 'a>(sec_keys: I) -> PubKeyMap<N>
 where
     B: Borrow<N>,
-    I: IntoIterator<Item = (B, &'a threshold_crypto::SecretKey)>,
+    I: IntoIterator<Item = (B, &'a SecretKey)>,
 {
     let to_pub = |(id, sk): I::Item| (id.borrow().clone(), sk.public_key());
     Arc::new(sec_keys.into_iter().map(to_pub).collect())
@@ -153,7 +109,7 @@ where
 
 /// A local error while handling an `Ack` or `Part` message, that was not caused by that message
 /// being invalid.
-#[derive(Clone, Eq, PartialEq, Debug, Fail)]
+#[derive(Clone, PartialEq, Debug, Fail)]
 pub enum Error {
     /// Error creating `SyncKeyGen`.
     #[fail(display = "Error creating SyncKeyGen: {}", _0)]
@@ -178,12 +134,6 @@ impl From<bincode::Error> for Error {
     }
 }
 
-impl Error {
-    fn encrypt<E: ToString>(err: E) -> Error {
-        Error::Encrypt(err.to_string())
-    }
-}
-
 /// A submission by a validator for the key generation. It must to be sent to all participating
 /// nodes and handled by all of them, including the one that produced it.
 ///
@@ -191,7 +141,7 @@ impl Error {
 /// row of values. If this message receives enough `Ack`s, it will be used as summand to produce
 /// the the key set in the end.
 #[derive(Deserialize, Serialize, Clone, Hash, Eq, PartialEq)]
-pub struct Part(BivarCommitment, Vec<Vec<u8>>);
+pub struct Part(BivarCommitment, Vec<Ciphertext>);
 
 impl Debug for Part {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -208,7 +158,7 @@ impl Debug for Part {
 /// The message is only produced after we verified our row against the commitment in the `Part`.
 /// For each node, it contains one encrypted value of that row.
 #[derive(Deserialize, Serialize, Clone, Hash, Eq, PartialEq)]
-pub struct Ack(u64, Vec<Vec<u8>>);
+pub struct Ack(u64, Vec<Ciphertext>);
 
 impl Debug for Ack {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -268,31 +218,31 @@ pub enum AckOutcome {
 ///
 /// It requires that all nodes handle all messages in the exact same order.
 #[derive(Debug)]
-pub struct SyncKeyGen<N, PK: PublicKey = threshold_crypto::PublicKey> {
+pub struct SyncKeyGen<N> {
     /// Our node ID.
     our_id: N,
     /// Our node index.
     our_idx: Option<u64>,
     /// Our secret key.
-    sec_key: PK::SecretKey,
+    sec_key: SecretKey,
     /// The public keys of all nodes, by node ID.
-    pub_keys: PubKeyMap<N, PK>,
+    pub_keys: PubKeyMap<N, PublicKey>,
     /// Proposed bivariate polynomials.
     parts: BTreeMap<u64, ProposalState>,
     /// The degree of the generated polynomial.
     threshold: usize,
 }
 
-impl<N: NodeIdT, PK: PublicKey> SyncKeyGen<N, PK> {
+impl<N: NodeIdT> SyncKeyGen<N> {
     /// Creates a new `SyncKeyGen` instance, together with the `Part` message that should be
     /// multicast to all nodes.
     ///
     /// If we are not a validator but only an observer, no `Part` message is produced and no
     /// messages need to be sent.
-    pub fn new<R: rand::Rng>(
+    pub fn new<R: bls::rand::RngCore>(
         our_id: N,
-        sec_key: PK::SecretKey,
-        pub_keys: PubKeyMap<N, PK>,
+        sec_key: SecretKey,
+        pub_keys: PubKeyMap<N, PublicKey>,
         threshold: usize,
         rng: &mut R,
     ) -> Result<(Self, Option<Part>), Error> {
@@ -314,16 +264,16 @@ impl<N: NodeIdT, PK: PublicKey> SyncKeyGen<N, PK> {
 
         let our_part = BivarPoly::random(threshold, rng);
         let commit = our_part.commitment();
-        let encrypt = |(i, pk): (usize, &PK)| {
+        let encrypt = |(i, pk): (usize, &PublicKey)| {
             let row = bincode::serialize(&our_part.row(i + 1))?;
-            pk.encrypt(&row, rng).map_err(Error::encrypt)
+            Ok(pk.encrypt_with_rng(rng, &row))
         };
         let rows = key_gen
             .pub_keys
             .values()
             .enumerate()
             .map(encrypt)
-            .collect::<Result<Vec<Vec<u8>>, Error>>()?;
+            .collect::<Result<Vec<Ciphertext>, Error>>()?;
         Ok((key_gen, Some(Part(commit, rows))))
     }
 
@@ -333,7 +283,7 @@ impl<N: NodeIdT, PK: PublicKey> SyncKeyGen<N, PK> {
     }
 
     /// Returns the map of participating nodes and their public keys.
-    pub fn public_keys(&self) -> &PubKeyMap<N, PK> {
+    pub fn public_keys(&self) -> &PubKeyMap<N> {
         &self.pub_keys
     }
 
@@ -343,7 +293,7 @@ impl<N: NodeIdT, PK: PublicKey> SyncKeyGen<N, PK> {
     ///
     /// All participating nodes must handle the exact same sequence of messages.
     /// Note that `handle_part` also needs to explicitly be called with this instance's own `Part`.
-    pub fn handle_part<R: rand::Rng>(
+    pub fn handle_part<R: bls::rand::RngCore>(
         &mut self,
         sender_id: &N,
         part: Part,
@@ -360,7 +310,7 @@ impl<N: NodeIdT, PK: PublicKey> SyncKeyGen<N, PK> {
         for (idx, pk) in self.pub_keys.values().enumerate() {
             let val = row.evaluate(idx + 1);
             let ser_val = bincode::serialize(&FieldWrap(val))?;
-            values.push(pk.encrypt(ser_val, rng).map_err(Error::encrypt)?);
+            values.push(pk.encrypt_with_rng(rng, ser_val));
         }
         Ok(PartOutcome::Valid(Some(Ack(sender_idx, values))))
     }
@@ -422,7 +372,8 @@ impl<N: NodeIdT, PK: PublicKey> SyncKeyGen<N, PK> {
         for part in self.parts.values().filter(is_complete) {
             pk_commit += part.commit.row(0);
             if let Some(sk_val) = opt_sk_val.as_mut() {
-                let row = Poly::interpolate(part.values.iter().take(self.threshold + 1));
+                let row = Poly::interpolate(part.values.iter().take(self.threshold + 1))
+                    .map_err(Error::Generation)?;
                 sk_val.add_assign(&row.evaluate(0));
             }
         }
@@ -466,7 +417,7 @@ impl<N: NodeIdT, PK: PublicKey> SyncKeyGen<N, PK> {
         let ser_row = self
             .sec_key
             .decrypt(&rows[our_idx as usize])
-            .map_err(|_| PartFault::DecryptRow)?;
+            .ok_or(PartFault::DecryptRow)?;
         let row: Poly = bincode::deserialize(&ser_row).map_err(|_| PartFault::DeserializeRow)?;
         if row.commitment() != commit_row {
             return Err(PartFault::RowCommitment);
@@ -498,11 +449,11 @@ impl<N: NodeIdT, PK: PublicKey> SyncKeyGen<N, PK> {
         let ser_val = self
             .sec_key
             .decrypt(&values[our_idx as usize])
-            .map_err(|_| AckFault::DecryptValue)?;
+            .ok_or(AckFault::DecryptValue)?;
         let val = bincode::deserialize::<FieldWrap<Fr>>(&ser_val)
             .map_err(|_| AckFault::DeserializeValue)?
             .into_inner();
-        if part.commit.evaluate(our_idx + 1, sender_idx + 1) != G1Affine::one().mul(val) {
+        if part.commit.evaluate(our_idx + 1, sender_idx + 1) != G1Affine::generator().mul(val) {
             return Err(AckFault::ValueCommitment);
         }
         part.values.insert(sender_idx + 1, val);
@@ -553,20 +504,21 @@ pub enum PartFault {
 #[cfg(test)]
 mod tests {
     use super::{AckOutcome, PartOutcome, SyncKeyGen};
+    use bls::{PublicKey, SecretKey, SignatureShare};
     use std::collections::BTreeMap;
     use std::sync::Arc;
-    use threshold_crypto::{PublicKey, SecretKey, SignatureShare};
 
     #[test]
     fn test_dkg() {
         // Use the OS random number generator for any randomness:
-        let mut rng = rand::rngs::OsRng::new().expect("Could not open OS random number generator.");
+        // let mut rng = bls::rand::rngs::OsRng::fill_bytes([0u8; 16]);
+        let mut rng = bls::rand::rngs::OsRng;
 
         // Two out of four shares will suffice to sign or encrypt something.
         let (threshold, node_num) = (1, 4);
 
         // Generate individual key pairs for encryption. These are not suitable for threshold schemes.
-        let sec_keys: Vec<SecretKey> = (0..node_num).map(|_| rand::random()).collect();
+        let sec_keys: Vec<SecretKey> = (0..node_num).map(|_| bls::rand::random()).collect();
         let pub_keys: BTreeMap<usize, PublicKey> = sec_keys
             .iter()
             .map(SecretKey::public_key)
