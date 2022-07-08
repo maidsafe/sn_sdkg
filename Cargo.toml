@@ -12,8 +12,7 @@ bincode = "1.2.0"
 byteorder = "1.3.2"
 failure = "0.1.6"
 hex_fmt = "0.3"
-log = "0.4.8"
 rand = "0.6.5"
 serde = { version = "1.0.102", features = ["derive", "rc"] }
-threshold_crypto = { rev = "624eeee", git = "https://github.com/poanetwork/threshold_crypto" }
 tiny-keccak = { version = "2.0.1", features = ["sha3"]}
+bls = { package = "blsttc", version = "6.0.0" }
