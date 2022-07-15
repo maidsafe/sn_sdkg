@@ -77,7 +77,6 @@ use bls::{
     serde_impl::FieldWrap,
     Ciphertext, Fr, G1Affine, PublicKey, PublicKeySet, SecretKey, SecretKeyShare,
 };
-use failure::Fail;
 use serde::{Deserialize, Serialize};
 use std::{
     borrow::Borrow,
@@ -87,6 +86,7 @@ use std::{
     ops::{AddAssign, Mul},
     sync::Arc,
 };
+use thiserror::Error;
 
 /// A peer node's unique identifier.
 pub trait NodeIdT: Eq + Ord + Clone + Debug + Hash + Send + Sync {}
@@ -109,22 +109,22 @@ where
 
 /// A local error while handling an `Ack` or `Part` message, that was not caused by that message
 /// being invalid.
-#[derive(Clone, PartialEq, Debug, Fail)]
+#[derive(Clone, PartialEq, Debug, Error)]
 pub enum Error {
     /// Error creating `SyncKeyGen`.
-    #[fail(display = "Error creating SyncKeyGen: {}", _0)]
+    #[error("Error creating SyncKeyGen: {0}")]
     Creation(CryptoError),
     /// Error generating keys.
-    #[fail(display = "Error generating keys: {}", _0)]
+    #[error("Error generating keys: {0}")]
     Generation(CryptoError),
     /// Unknown sender.
-    #[fail(display = "Unknown sender")]
+    #[error("Unknown sender")]
     UnknownSender,
     /// Failed to serialize message.
-    #[fail(display = "Serialization error: {}", _0)]
+    #[error("Serialization error: {0}")]
     Serialize(String),
     /// Failed to encrypt message parts for a peer.
-    #[fail(display = "Encryption error: {}", _0)]
+    #[error("Encryption error: {0}")]
     Encrypt(String),
 }
 
@@ -140,7 +140,7 @@ impl From<bincode::Error> for Error {
 /// The message contains a commitment to a bivariate polynomial, and for each node, an encrypted
 /// row of values. If this message receives enough `Ack`s, it will be used as summand to produce
 /// the the key set in the end.
-#[derive(Deserialize, Serialize, Clone, Hash, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Part(BivarCommitment, Vec<Ciphertext>);
 
 impl Debug for Part {
@@ -157,7 +157,7 @@ impl Debug for Part {
 ///
 /// The message is only produced after we verified our row against the commitment in the `Part`.
 /// For each node, it contains one encrypted value of that row.
-#[derive(Deserialize, Serialize, Clone, Hash, Eq, PartialEq)]
+#[derive(Deserialize, Serialize, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Ack(u64, Vec<Ciphertext>);
 
 impl Debug for Ack {
@@ -462,42 +462,42 @@ impl<N: NodeIdT> SyncKeyGen<N> {
 }
 
 /// An error in an `Ack` message sent by a faulty node.
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Fail)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Error)]
 pub enum AckFault {
     /// The number of values differs from the number of nodes.
-    #[fail(display = "The number of values differs from the number of nodes")]
+    #[error("The number of values differs from the number of nodes")]
     ValueCount,
     /// No corresponding Part received.
-    #[fail(display = "No corresponding Part received")]
+    #[error("No corresponding Part received")]
     MissingPart,
     /// Value decryption failed.
-    #[fail(display = "Value decryption failed")]
+    #[error("Value decryption failed")]
     DecryptValue,
     /// Value deserialization failed.
-    #[fail(display = "Value deserialization failed")]
+    #[error("Value deserialization failed")]
     DeserializeValue,
     /// Value doesn't match the commitment.
-    #[fail(display = "Value doesn't match the commitment")]
+    #[error("Value doesn't match the commitment")]
     ValueCommitment,
 }
 
 /// An error in a `Part` message sent by a faulty node.
-#[derive(Clone, Copy, Eq, PartialEq, Debug, Fail)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug, Error)]
 pub enum PartFault {
     /// The number of rows differs from the number of nodes.
-    #[fail(display = "The number of rows differs from the number of nodes")]
+    #[error("The number of rows differs from the number of nodes")]
     RowCount,
     /// Received multiple different Part messages from the same sender.
-    #[fail(display = "Received multiple different Part messages from the same sender")]
+    #[error("Received multiple different Part messages from the same sender")]
     MultipleParts,
     /// Could not decrypt our row in the Part message.
-    #[fail(display = "Could not decrypt our row in the Part message")]
+    #[error("Could not decrypt our row in the Part message")]
     DecryptRow,
     /// Could not deserialize our row in the Part message.
-    #[fail(display = "Could not deserialize our row in the Part message")]
+    #[error("Could not deserialize our row in the Part message")]
     DeserializeRow,
     /// Row does not match the commitment.
-    #[fail(display = "Row does not match the commitment")]
+    #[error("Row does not match the commitment")]
     RowCommitment,
 }
 
