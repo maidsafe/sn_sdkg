@@ -14,3 +14,4 @@ pub(crate) mod vote;
 
 pub use error::Error;
 pub use state::{DkgState, VoteResponse};
+pub use vote::DkgSignedVote;
