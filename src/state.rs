@@ -24,7 +24,6 @@ pub struct DkgState<R: bls::rand::RngCore> {
     keygen: SyncKeyGen<NodeId>,
     our_part: Part,
     all_votes: BTreeSet<DkgSignedVote>,
-    outcome: Option<(PublicKeySet, SecretKeyShare)>,
     rng: R,
 }
 
@@ -69,7 +68,6 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
             keygen: sync_key_gen,
             all_votes: BTreeSet::new(),
             our_part: opt_part.ok_or(Error::NotInPubKeySet)?,
-            outcome: None,
             rng: rng.clone(),
         })
     }
@@ -78,11 +76,6 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
     pub fn first_vote(&mut self) -> Result<DkgSignedVote> {
         let vote = DkgVote::SinglePart(self.our_part.clone());
         self.cast_vote(vote)
-    }
-
-    /// The outcome of this DKG, either Some keys of None if not finished
-    pub fn outcome(&self) -> Option<(PublicKeySet, SecretKeyShare)> {
-        self.outcome.clone()
     }
 
     fn get_validated_vote(&self, vote: &DkgSignedVote) -> Result<DkgVote> {
@@ -202,7 +195,6 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
             DkgCurrentState::Termination(acks) => {
                 self.handle_all_acks(acks)?;
                 if let (pubs, Some(sec)) = self.keygen.generate()? {
-                    self.outcome = Some((pubs.clone(), sec.clone()));
                     Ok(VoteResponse::DkgComplete(pubs, sec))
                 } else {
                     Err(Error::FailedToGenerateSecretKeyShare)
