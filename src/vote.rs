@@ -18,7 +18,7 @@ pub(crate) type IdPart = (NodeId, Part);
 pub(crate) type IdAck = (NodeId, Ack);
 
 // The order of entries in this enum is IMPORTANT
-// Its the order in which they should be handled
+// It's the order in which they should be handled
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize)]
 pub enum DkgVote {
     /// Participant's own Part

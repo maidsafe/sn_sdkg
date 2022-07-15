@@ -176,7 +176,7 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
         VoteResponse::AntiEntropy(self.all_votes.clone())
     }
 
-    /// Handle a DKG vote, save the information if we learned any, broadcast when:
+    /// Handle a DKG vote, save the information if we learned any, broadcast:
     /// - SingleAck when got all parts
     /// - AllAcks when got all acks
     /// Consider we reached completion when we received everyone's signatures over the AllAcks
