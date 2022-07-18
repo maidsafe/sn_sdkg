@@ -14,7 +14,7 @@ use crate::vote::{DkgVote, IdAck, IdPart, NodeId};
 
 pub(crate) struct Knowledge {
     pub parts: BTreeSet<IdPart>,
-    pub acks: BTreeMap<IdPart, BTreeSet<IdAck>>,
+    pub part_acks: BTreeMap<IdPart, BTreeSet<IdAck>>,
     pub agreed_with_all_acks: BTreeSet<NodeId>,
 }
 
@@ -34,7 +34,7 @@ impl Knowledge {
     fn new() -> Self {
         Knowledge {
             parts: BTreeSet::new(),
-            acks: BTreeMap::new(),
+            part_acks: BTreeMap::new(),
             agreed_with_all_acks: BTreeSet::new(),
         }
     }
@@ -50,8 +50,11 @@ impl Knowledge {
     }
 
     pub fn got_all_acks(&self, participants_len: usize) -> bool {
-        self.acks.len() == participants_len
-            && self.acks.iter().any(|(_, a)| a.len() != participants_len)
+        self.part_acks.len() == participants_len
+            && self
+                .part_acks
+                .iter()
+                .all(|(_, a)| a.len() == participants_len)
     }
 
     fn handle_vote(&mut self, vote: DkgVote, id: NodeId) -> Result<(), KnowledgeFault> {
@@ -71,20 +74,20 @@ impl Knowledge {
                     return Err(KnowledgeFault::IncompatibleParts);
                 }
                 for (id_part, ack) in acked_parts {
-                    if let Some(entry) = self.acks.get_mut(&id_part) {
+                    if let Some(entry) = self.part_acks.get_mut(&id_part) {
                         entry.insert((id, ack));
                     } else {
-                        self.acks.insert(id_part, BTreeSet::from([(id, ack)]));
+                        self.part_acks.insert(id_part, BTreeSet::from([(id, ack)]));
                     }
                 }
             }
             DkgVote::AllAcks(all_acks) => {
                 if !self.got_all_acks(self.parts.len()) {
                     return Err(KnowledgeFault::MissingAcks);
-                } else if all_acks != self.acks {
+                } else if all_acks != self.part_acks {
                     debug!(
                         "IncompatibleAcks: ours: {:?}, theirs: {:?}",
-                        self.acks, all_acks
+                        self.part_acks, all_acks
                     );
                     return Err(KnowledgeFault::IncompatibleAcks);
                 }

@@ -50,7 +50,7 @@ fn verify_sig<M: Serialize>(msg: &M, sig: &Signature, public_key: &PublicKey) ->
 
 impl DkgSignedVote {
     /// Creates a new DkgSignedVote from a DkgVote
-    pub fn from(vote: DkgVote, voter: NodeId, sig: Signature) -> Self {
+    pub fn new(vote: DkgVote, voter: NodeId, sig: Signature) -> Self {
         DkgSignedVote { vote, voter, sig }
     }
 

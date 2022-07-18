@@ -47,7 +47,7 @@ enum DkgCurrentState {
 }
 
 impl<R: bls::rand::RngCore + Clone> DkgState<R> {
-    pub fn from(
+    pub fn new(
         our_id: NodeId,
         secret_key: SecretKey,
         pub_keys: BTreeMap<NodeId, PublicKey>,
@@ -105,12 +105,12 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
 
         let participants_len = self.pub_keys.len();
         if knowledge.agreed_with_all_acks.len() == participants_len {
-            DkgCurrentState::Termination(knowledge.acks)
+            DkgCurrentState::Termination(knowledge.part_acks)
         } else if !knowledge.agreed_with_all_acks.is_empty() {
             DkgCurrentState::WaitingForTotalAgreement
         } else if knowledge.got_all_acks(participants_len) {
-            DkgCurrentState::GotAllAcks(knowledge.acks)
-        } else if !knowledge.acks.is_empty() {
+            DkgCurrentState::GotAllAcks(knowledge.part_acks)
+        } else if !knowledge.part_acks.is_empty() {
             DkgCurrentState::WaitingForMoreAcks
         } else if knowledge.parts.len() == participants_len {
             DkgCurrentState::GotAllParts(knowledge.parts)
@@ -122,7 +122,7 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
     /// Sign, log and return the vote
     fn cast_vote(&mut self, vote: DkgVote) -> Result<DkgSignedVote> {
         let sig = self.secret_key.sign(&bincode::serialize(&vote)?);
-        let signed_vote = DkgSignedVote::from(vote, self.id, sig);
+        let signed_vote = DkgSignedVote::new(vote, self.id, sig);
         self.all_votes.insert(signed_vote.clone());
         Ok(signed_vote)
     }
