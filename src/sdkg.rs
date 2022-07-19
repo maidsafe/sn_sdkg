@@ -84,7 +84,6 @@ use std::{
     fmt::{self, Debug, Formatter},
     hash::Hash,
     ops::{AddAssign, Mul},
-    sync::Arc,
 };
 use thiserror::Error;
 
@@ -92,8 +91,8 @@ use thiserror::Error;
 pub trait NodeIdT: Eq + Ord + Clone + Debug + Hash + Send + Sync {}
 impl<N> NodeIdT for N where N: Eq + Ord + Clone + Debug + Hash + Send + Sync {}
 
-/// A map assigning to each node ID a public key, wrapped in an `Arc`.
-pub type PubKeyMap<N, PK = PublicKey> = Arc<BTreeMap<N, PK>>;
+/// A map assigning to each node ID a public key
+pub type PubKeyMap<N, PK = PublicKey> = BTreeMap<N, PK>;
 
 /// Returns a `PubKeyMap` corresponding to the given secret keys.
 ///
@@ -104,7 +103,7 @@ where
     I: IntoIterator<Item = (B, &'a SecretKey)>,
 {
     let to_pub = |(id, sk): I::Item| (id.borrow().clone(), sk.public_key());
-    Arc::new(sec_keys.into_iter().map(to_pub).collect())
+    sec_keys.into_iter().map(to_pub).collect()
 }
 
 /// A local error while handling an `Ack` or `Part` message, that was not caused by that message
@@ -506,7 +505,6 @@ mod tests {
     use super::{AckOutcome, PartOutcome, SyncKeyGen};
     use bls::{PublicKey, SecretKey, SignatureShare};
     use std::collections::BTreeMap;
-    use std::sync::Arc;
 
     #[test]
     fn test_dkg() {
@@ -531,10 +529,9 @@ mod tests {
         let mut parts = Vec::new();
         for (id, sk) in sec_keys.into_iter().enumerate() {
             let (sync_key_gen, opt_part) =
-                SyncKeyGen::new(id, sk, Arc::new(pub_keys.clone()), threshold, &mut rng)
-                    .unwrap_or_else(|_| {
-                        panic!("Failed to create `SyncKeyGen` instance for node #{}", id)
-                    });
+                SyncKeyGen::new(id, sk, pub_keys.clone(), threshold, &mut rng).unwrap_or_else(
+                    |_| panic!("Failed to create `SyncKeyGen` instance for node #{}", id),
+                );
             nodes.insert(id, sync_key_gen);
             parts.push((id, opt_part.unwrap())); // Would be `None` for observer nodes.
         }

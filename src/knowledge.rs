@@ -49,12 +49,12 @@ impl Knowledge {
         Ok(knowledge)
     }
 
-    pub fn got_all_acks(&self, participants_len: usize) -> bool {
-        self.part_acks.len() == participants_len
+    pub fn got_all_acks(&self, num_participants: usize) -> bool {
+        self.part_acks.len() == num_participants
             && self
                 .part_acks
                 .iter()
-                .all(|(_, a)| a.len() == participants_len)
+                .all(|(_, a)| a.len() == num_participants)
     }
 
     fn handle_vote(&mut self, vote: DkgVote, id: NodeId) -> Result<(), KnowledgeFault> {
@@ -74,11 +74,8 @@ impl Knowledge {
                     return Err(KnowledgeFault::IncompatibleParts);
                 }
                 for (id_part, ack) in acked_parts {
-                    if let Some(entry) = self.part_acks.get_mut(&id_part) {
-                        entry.insert((id, ack));
-                    } else {
-                        self.part_acks.insert(id_part, BTreeSet::from([(id, ack)]));
-                    }
+                    let acks = self.part_acks.entry(id_part).or_default();
+                    acks.insert((id, ack));
                 }
             }
             DkgVote::AllAcks(all_acks) => {

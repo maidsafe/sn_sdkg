@@ -8,7 +8,6 @@
 
 use bls::{PublicKey, PublicKeySet, SecretKey, SecretKeyShare};
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use crate::error::{Error, Result};
 use crate::knowledge::{Knowledge, KnowledgeFault};
@@ -54,13 +53,8 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
         threshold: usize,
         rng: &mut R,
     ) -> Result<Self> {
-        let (sync_key_gen, opt_part) = SyncKeyGen::new(
-            our_id,
-            secret_key.clone(),
-            Arc::new(pub_keys.clone()),
-            threshold,
-            rng,
-        )?;
+        let (sync_key_gen, opt_part) =
+            SyncKeyGen::new(our_id, secret_key.clone(), pub_keys.clone(), threshold, rng)?;
         Ok(DkgState {
             id: our_id,
             secret_key,
@@ -103,16 +97,16 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
             Ok(k) => k,
         };
 
-        let participants_len = self.pub_keys.len();
-        if knowledge.agreed_with_all_acks.len() == participants_len {
+        let num_participants = self.pub_keys.len();
+        if knowledge.agreed_with_all_acks.len() == num_participants {
             DkgCurrentState::Termination(knowledge.part_acks)
         } else if !knowledge.agreed_with_all_acks.is_empty() {
             DkgCurrentState::WaitingForTotalAgreement
-        } else if knowledge.got_all_acks(participants_len) {
+        } else if knowledge.got_all_acks(num_participants) {
             DkgCurrentState::GotAllAcks(knowledge.part_acks)
         } else if !knowledge.part_acks.is_empty() {
             DkgCurrentState::WaitingForMoreAcks
-        } else if knowledge.parts.len() == participants_len {
+        } else if knowledge.parts.len() == num_participants {
             DkgCurrentState::GotAllParts(knowledge.parts)
         } else {
             DkgCurrentState::WaitingForMoreParts
@@ -134,8 +128,7 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
                 let outcome = self.keygen.handle_ack(&sender_id, ack.clone())?;
                 if let AckOutcome::Invalid(fault) = outcome {
                     return Err(Error::FaultyVote(format!(
-                        "Ack fault: {:?} by {:?} for part by {:?}",
-                        fault, sender_id, part_id
+                        "Ack fault: {fault:?} by {sender_id:?} for part by {part_id:?}"
                     )));
                 }
             }
@@ -156,8 +149,7 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
                 }
                 PartOutcome::Invalid(fault) => {
                     return Err(Error::FaultyVote(format!(
-                        "Part fault: {:?} by {:?}",
-                        fault, sender_id
+                        "Part fault: {fault:?} by {sender_id:?}"
                     )));
                 }
                 PartOutcome::Valid(None) => {
