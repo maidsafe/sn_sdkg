@@ -6,7 +6,7 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use bls::{PublicKey, PublicKeySet, SecretKey, SecretKeyShare};
+use bls::{PublicKey, PublicKeySet, SecretKey, SecretKeyShare, Signature};
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::error::{Error, Result};
@@ -66,6 +66,10 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
         })
     }
 
+    pub fn id(&self) -> NodeId {
+        self.id
+    }
+
     /// The 1st vote with our Part
     pub fn first_vote(&mut self) -> Result<DkgSignedVote> {
         let vote = DkgVote::SinglePart(self.our_part.clone());
@@ -113,9 +117,14 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
         }
     }
 
+    pub fn sign_vote(&self, vote: &DkgVote) -> Result<Signature> {
+        let sig = self.secret_key.sign(&bincode::serialize(vote)?);
+        Ok(sig)
+    }
+
     /// Sign, log and return the vote
     fn cast_vote(&mut self, vote: DkgVote) -> Result<DkgSignedVote> {
-        let sig = self.secret_key.sign(&bincode::serialize(&vote)?);
+        let sig = self.sign_vote(&vote)?;
         let signed_vote = DkgSignedVote::new(vote, self.id, sig);
         self.all_votes.insert(signed_vote.clone());
         Ok(signed_vote)
@@ -166,6 +175,22 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
     /// Returns all the votes that we received as an anti entropy update
     pub fn handle_ae(&self) -> VoteResponse {
         VoteResponse::AntiEntropy(self.all_votes.clone())
+    }
+
+    /// After termination, returns Some keypair else returns None
+    // NB: it recomputes everything from current knowledge instead of using a cached result
+    pub fn outcome(&mut self) -> Result<Option<(PublicKeySet, SecretKeyShare)>> {
+        let votes = self.all_checked_votes()?;
+        if let DkgCurrentState::Termination(acks) = self.current_dkg_state(votes) {
+            self.handle_all_acks(acks)?;
+            if let (pubs, Some(sec)) = self.keygen.generate()? {
+                Ok(Some((pubs, sec)))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
     }
 
     /// Handle a DKG vote, save the information if we learned any, broadcast:
