@@ -7,8 +7,6 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::fs::File;
-use std::io::Write;
 
 use bls::rand::rngs::OsRng;
 use bls::{PublicKey, SecretKey};
@@ -191,36 +189,38 @@ impl Net {
             .collect();
     }
 
-    #[allow(dead_code)]
-    pub fn generate_msc(&self, name: &str) -> Result<()> {
-        // See: http://www.mcternan.me.uk/mscgen/
-        let mut msc = String::from(
-            "
-msc {\n
-  hscale = \"2\";\n
-",
-        );
-        let procs = self
-            .procs
-            .iter()
-            .map(|p| p.id())
-            .collect::<BTreeSet<_>>() // sort by actor id
-            .into_iter()
-            .map(|id| format!("{:?}", id))
-            .collect::<Vec<_>>()
-            .join(",");
-        msc.push_str(&procs);
-        msc.push_str(";\n");
-        for packet in self.delivered_packets.iter() {
-            msc.push_str(&format!(
-                "{:?} -> {:?} [ label=\"{:?}\"];\n",
-                packet.source, packet.dest, packet.vote
-            ));
-        }
-        msc.push_str("}\n");
-
-        let mut msc_file = File::create(name)?;
-        msc_file.write_all(msc.as_bytes())?;
-        Ok(())
-    }
+    // use std::fs::File;
+    // use std::io::Write;
+    //     #[allow(dead_code)]
+    //     pub fn generate_msc(&self, name: &str) -> Result<()> {
+    //         // See: http://www.mcternan.me.uk/mscgen/
+    //         let mut msc = String::from(
+    //             "
+    // msc {\n
+    //   hscale = \"2\";\n
+    // ",
+    //         );
+    //         let procs = self
+    //             .procs
+    //             .iter()
+    //             .map(|p| p.id())
+    //             .collect::<BTreeSet<_>>() // sort by actor id
+    //             .into_iter()
+    //             .map(|id| format!("{:?}", id))
+    //             .collect::<Vec<_>>()
+    //             .join(",");
+    //         msc.push_str(&procs);
+    //         msc.push_str(";\n");
+    //         for packet in self.delivered_packets.iter() {
+    //             msc.push_str(&format!(
+    //                 "{:?} -> {:?} [ label=\"{:?}\"];\n",
+    //                 packet.source, packet.dest, packet.vote
+    //             ));
+    //         }
+    //         msc.push_str("}\n");
+    //
+    //         let mut msc_file = File::create(name)?;
+    //         msc_file.write_all(msc.as_bytes())?;
+    //         Ok(())
+    //     }
 }
