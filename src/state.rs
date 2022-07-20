@@ -38,9 +38,9 @@ enum DkgCurrentState {
     IncompatibleVotes,
     NeedAntiEntropy,
     Termination(BTreeMap<IdPart, BTreeSet<IdAck>>),
-    WaitingForTotalAgreement,
+    WaitingForTotalAgreement(BTreeMap<IdPart, BTreeSet<IdAck>>),
     GotAllAcks(BTreeMap<IdPart, BTreeSet<IdAck>>),
-    WaitingForMoreAcks,
+    WaitingForMoreAcks(BTreeSet<IdPart>),
     GotAllParts(BTreeSet<IdPart>),
     WaitingForMoreParts,
 }
@@ -105,15 +105,42 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
         if knowledge.agreed_with_all_acks.len() == num_participants {
             DkgCurrentState::Termination(knowledge.part_acks)
         } else if !knowledge.agreed_with_all_acks.is_empty() {
-            DkgCurrentState::WaitingForTotalAgreement
+            DkgCurrentState::WaitingForTotalAgreement(knowledge.part_acks)
         } else if knowledge.got_all_acks(num_participants) {
             DkgCurrentState::GotAllAcks(knowledge.part_acks)
         } else if !knowledge.part_acks.is_empty() {
-            DkgCurrentState::WaitingForMoreAcks
+            DkgCurrentState::WaitingForMoreAcks(knowledge.parts)
         } else if knowledge.parts.len() == num_participants {
             DkgCurrentState::GotAllParts(knowledge.parts)
         } else {
             DkgCurrentState::WaitingForMoreParts
+        }
+    }
+
+    // Current DKG state taking last vote's type into account
+    fn dkg_state_with_vote(
+        &self,
+        votes: Vec<(DkgVote, NodeId)>,
+        vote: &DkgVote,
+        is_new: bool,
+    ) -> DkgCurrentState {
+        let dkg_state = self.current_dkg_state(votes);
+        match dkg_state {
+            // This case happens when we receive the last Part but we already received
+            // someone's acks before, making us skip GotAllParts as we already have an Ack
+            DkgCurrentState::WaitingForMoreAcks(parts)
+                if is_new && matches!(vote, DkgVote::SinglePart(_)) =>
+            {
+                DkgCurrentState::GotAllParts(parts)
+            }
+            // Similarly this happens when we receive the last Ack but we already received
+            // someone's agreement on all acks before, making us skip GotAllAcks
+            DkgCurrentState::WaitingForTotalAgreement(part_acks)
+                if is_new && matches!(vote, DkgVote::SingleAck(_)) =>
+            {
+                DkgCurrentState::GotAllAcks(part_acks)
+            }
+            _ => dkg_state,
         }
     }
 
@@ -199,12 +226,12 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
     /// Consider we reached completion when we received everyone's signatures over the AllAcks
     pub fn handle_signed_vote(&mut self, msg: DkgSignedVote) -> Result<VoteResponse> {
         // immediately bail if signature check fails
-        self.get_validated_vote(&msg)?;
+        let last_vote = self.get_validated_vote(&msg)?;
 
         // update knowledge with vote
-        self.all_votes.insert(msg);
+        let is_new_vote = self.all_votes.insert(msg);
         let votes = self.all_checked_votes()?;
-        let dkg_state = self.current_dkg_state(votes);
+        let dkg_state = self.dkg_state_with_vote(votes, &last_vote, is_new_vote);
 
         // act accordingly
         match dkg_state {
@@ -226,8 +253,8 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
                 Ok(VoteResponse::BroadcastVote(Box::new(self.cast_vote(vote)?)))
             }
             DkgCurrentState::WaitingForMoreParts
-            | DkgCurrentState::WaitingForMoreAcks
-            | DkgCurrentState::WaitingForTotalAgreement => Ok(VoteResponse::WaitingForMoreVotes),
+            | DkgCurrentState::WaitingForMoreAcks(_)
+            | DkgCurrentState::WaitingForTotalAgreement(_) => Ok(VoteResponse::WaitingForMoreVotes),
             DkgCurrentState::IncompatibleVotes => {
                 Err(Error::FaultyVote("got incompatible votes".to_string()))
             }

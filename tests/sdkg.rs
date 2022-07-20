@@ -20,9 +20,9 @@ fn init() {
 #[test]
 fn test_normal_dkg_no_packet_drops() {
     init();
-    // make network of 5 members
+    // make network of 10 members
     let mut rng = bls::rand::rngs::OsRng;
-    let mut net = Net::with_procs(2, 2, &mut rng);
+    let mut net = Net::with_procs(7, 10, &mut rng);
 
     // bcast everyone's first Part
     let all_parts: Vec<_> = net
