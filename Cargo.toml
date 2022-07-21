@@ -17,3 +17,8 @@ tiny-keccak = { version = "2.0.1", features = ["sha3"]}
 thiserror = "1.0.31"
 bls = { package = "blsttc", version = "6.0.0" }
 log = "0.4.13"
+
+[dev-dependencies]
+env_logger = "0.8"
+# quickcheck = "1"
+# quickcheck_macros = "1"

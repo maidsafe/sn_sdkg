@@ -9,17 +9,18 @@
 use bls::{PublicKey, Signature};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 
 use crate::error::{Error, Result};
 use crate::sdkg::{Ack, Part};
 
-pub(crate) type NodeId = u8;
+pub type NodeId = u8;
 pub(crate) type IdPart = (NodeId, Part);
 pub(crate) type IdAck = (NodeId, Ack);
 
 // The order of entries in this enum is IMPORTANT
 // It's the order in which they should be handled
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize)]
 pub enum DkgVote {
     /// Participant's own Part
     SinglePart(Part),
@@ -29,7 +30,7 @@ pub enum DkgVote {
     AllAcks(BTreeMap<IdPart, BTreeSet<IdAck>>),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize)]
 pub struct DkgSignedVote {
     /// This field is private to ensure votes are always signature-checked
     vote: DkgVote,
@@ -37,6 +38,13 @@ pub struct DkgSignedVote {
     pub voter: NodeId,
     /// The bls signature of the voter
     pub sig: Signature,
+}
+
+// Manual impl of Debug to skip vote content details
+impl fmt::Debug for DkgSignedVote {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}:{:?}", self.voter, self.vote)
+    }
 }
 
 fn verify_sig<M: Serialize>(msg: &M, sig: &Signature, public_key: &PublicKey) -> Result<()> {

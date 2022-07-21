@@ -6,6 +6,7 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
+pub mod debug;
 pub(crate) mod error;
 pub(crate) mod knowledge;
 pub mod sdkg;
@@ -14,4 +15,7 @@ pub(crate) mod vote;
 
 pub use error::Error;
 pub use state::{DkgState, VoteResponse};
-pub use vote::DkgSignedVote;
+pub use vote::{DkgSignedVote, NodeId};
+
+// For testing purposes
+pub use vote::DkgVote;
