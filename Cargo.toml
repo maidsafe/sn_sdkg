@@ -19,7 +19,6 @@ bls = { package = "blsttc", version = "6.0.0" }
 log = "0.4.13"
 
 [dev-dependencies]
-eyre = "0.6.5"
 env_logger = "0.8"
 # quickcheck = "1"
 # quickcheck_macros = "1"
