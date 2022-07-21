@@ -10,12 +10,12 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use bls::rand::rngs::OsRng;
 use bls::{PublicKey, SecretKey};
-use eyre::Result;
 use log::info;
 use rand::prelude::{IteratorRandom, StdRng};
 use rand::Rng;
 
 use sn_sdkg::{DkgSignedVote, DkgState, DkgVote, Error, NodeId, VoteResponse};
+pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
@@ -147,11 +147,7 @@ impl Net {
             Err(Error::UnknownSender) => {
                 assert!(self.procs.len() as u8 <= packet.source);
             }
-            Err(Error::FaultyVote(_)) => {
-                let bad_vote = self.bad_vote(packet.source);
-                assert_eq!(packet.vote, bad_vote);
-            }
-            Err(err) => return Err(err.into()),
+            Err(err) => return Err(err),
         }
         Ok(())
     }
