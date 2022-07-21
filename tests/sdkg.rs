@@ -6,6 +6,8 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
+use std::collections::BTreeSet;
+
 mod net;
 use net::Net;
 
@@ -36,15 +38,21 @@ fn test_normal_dkg_no_packet_drops() {
             )
         })
         .collect();
-    for (id, v) in all_parts.iter() {
-        net.broadcast(*id, v.clone());
+    for (id, v) in all_parts {
+        net.broadcast(id, v);
     }
 
     // let everyone vote
     net.drain_queued_packets().unwrap();
 
-    // check that everyone reached termination
+    // check that everyone reached termination on the same pubkeyset
+    let mut pubs = BTreeSet::new();
     for mut node in net.procs.into_iter() {
-        assert!(node.outcome().unwrap().is_some())
+        let (pks, _sks) = node
+            .outcome()
+            .expect("Unexpectedly failed to generate keypair")
+            .unwrap();
+        pubs.insert(pks);
     }
+    assert!(pubs.len() == 1);
 }
