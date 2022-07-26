@@ -6,6 +6,8 @@ description = "Safe Network Synchronous Distributed Key Generation: enables deal
 categories = ["algorithms", "asynchronous", "cryptography", "network-programming"]
 keywords = ["consensus", "asynchronous", "threshold"]
 license = "MIT"
+repository = "https://github.com/maidsafe/sn_sdkg"
+homepage = "https://maidsafe.net"
 
 [dependencies]
 bincode = "1.2.0"
