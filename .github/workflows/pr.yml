@@ -78,7 +78,7 @@ jobs:
         with:
           args: '-v --release --out Lcov'
       - name: Push code coverage results to coveralls.io
-        uses: coverallsapp/github-action@main
+        uses: coverallsapp/github-action@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           parallel: true
