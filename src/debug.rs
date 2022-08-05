@@ -28,7 +28,6 @@ impl fmt::Debug for VoteResponse {
             VoteResponse::WaitingForMoreVotes => write!(f, "WaitingForMoreVotes"),
             VoteResponse::BroadcastVote(v) => write!(f, "BroadcastVote {:?}", *v),
             VoteResponse::RequestAntiEntropy => write!(f, "RequestAntiEntropy"),
-            VoteResponse::AntiEntropy(_) => write!(f, "AntiEntropy"),
             VoteResponse::DkgComplete(_, _) => write!(f, "DkgComplete"),
         }
     }

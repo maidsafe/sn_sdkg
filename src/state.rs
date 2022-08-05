@@ -30,7 +30,6 @@ pub enum VoteResponse {
     WaitingForMoreVotes,
     BroadcastVote(Box<DkgSignedVote>),
     RequestAntiEntropy,
-    AntiEntropy(BTreeSet<DkgSignedVote>),
     DkgComplete(PublicKeySet, SecretKeyShare),
 }
 
@@ -199,9 +198,9 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
         Ok(DkgVote::SingleAck(acks))
     }
 
-    /// Returns all the votes that we received as an anti entropy update
-    pub fn handle_ae(&self) -> VoteResponse {
-        VoteResponse::AntiEntropy(self.all_votes.clone())
+    /// Returns all the votes that we received
+    pub fn all_votes(&self) -> Vec<DkgSignedVote> {
+        self.all_votes.iter().cloned().collect()
     }
 
     /// After termination, returns Some keypair else returns None
