@@ -137,9 +137,6 @@ impl Net {
             Ok(VoteResponse::RequestAntiEntropy) => {
                 // AE TODO
             }
-            Ok(VoteResponse::AntiEntropy(_votes)) => {
-                // AE TODO
-            }
             Ok(VoteResponse::DkgComplete(_pub_keys, _sec_key)) => {
                 info!("[NET] DkgComplete for {:?}", packet.dest);
                 // Termination TODO
