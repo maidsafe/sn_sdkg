@@ -31,7 +31,7 @@ pub struct Net {
 }
 
 impl Net {
-    pub fn with_procs(threshold: usize, n: usize, rng: &mut OsRng) -> Self {
+    pub fn with_procs(n: usize, rng: &mut OsRng) -> Self {
         let sec_keys: Vec<SecretKey> = (0..n).map(|_| bls::rand::random()).collect();
         let pub_keys: BTreeMap<NodeId, PublicKey> = sec_keys
             .iter()
@@ -48,7 +48,6 @@ impl Net {
                     id as NodeId,
                     sec_key.clone(),
                     pub_keys.clone(),
-                    threshold,
                     rng,
                 )
                 .unwrap()

@@ -49,9 +49,10 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
         our_id: NodeId,
         secret_key: SecretKey,
         pub_keys: BTreeMap<NodeId, PublicKey>,
-        threshold: usize,
         rng: &mut R,
     ) -> Result<Self> {
+        // The number of nodes must be at least 2 * threshold + 1
+        let threshold = (pub_keys.len() - 1) / 2;
         let (sync_key_gen, opt_part) =
             SyncKeyGen::new(our_id, secret_key.clone(), pub_keys.clone(), threshold, rng)?;
         Ok(DkgState {
