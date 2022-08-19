@@ -694,7 +694,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dkg_threshold() {
+    fn test_threshold() {
         for nodes_num in 2..10 {
             // for threshold in 1..((nodes_num-1)/2+1) {
             for threshold in 1..nodes_num {
