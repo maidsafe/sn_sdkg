@@ -189,9 +189,9 @@ impl ProposalState {
         }
     }
 
-    /// Returns `true` if at least `2 * threshold + 1` nodes have acked.
-    fn is_complete(&self, threshold: usize) -> bool {
-        self.acks.len() > 2 * threshold
+    /// Returns `true` if all nodes have acked.
+    fn is_complete(&self, all_nodes_len: usize) -> bool {
+        self.acks.len() == all_nodes_len
     }
 }
 
@@ -230,8 +230,6 @@ pub struct SyncKeyGen<N> {
     parts: BTreeMap<u64, ProposalState>,
     /// The degree of the generated polynomial. The threshold of the generated keyset.
     threshold: usize,
-    /// A `Part` is complete if it received at least 2 t + 1 valid `Ack`s
-    parts_threshold: usize,
 }
 
 impl<N: NodeIdT> SyncKeyGen<N> {
@@ -251,8 +249,6 @@ impl<N: NodeIdT> SyncKeyGen<N> {
             .keys()
             .position(|id| *id == our_id)
             .map(|idx| idx as u64);
-        let min_part_threshold = (pub_keys.len() - 1) / 2;
-        let parts_threshold = std::cmp::min(threshold, min_part_threshold);
         let key_gen = SyncKeyGen {
             our_id,
             our_idx,
@@ -260,7 +256,6 @@ impl<N: NodeIdT> SyncKeyGen<N> {
             pub_keys,
             parts: BTreeMap::new(),
             threshold,
-            parts_threshold,
         };
         if our_idx.is_none() {
             return Ok((key_gen, None)); // No part: we are an observer.
@@ -344,7 +339,7 @@ impl<N: NodeIdT> SyncKeyGen<N> {
     pub fn count_complete(&self) -> usize {
         self.parts
             .values()
-            .filter(|part| part.is_complete(self.parts_threshold))
+            .filter(|part| part.is_complete(self.pub_keys.len()))
             .count()
     }
 
@@ -352,12 +347,12 @@ impl<N: NodeIdT> SyncKeyGen<N> {
     pub fn is_node_ready(&self, proposer_id: &N) -> bool {
         self.node_index(proposer_id)
             .and_then(|proposer_idx| self.parts.get(&proposer_idx))
-            .map_or(false, |part| part.is_complete(self.parts_threshold))
+            .map_or(false, |part| part.is_complete(self.pub_keys.len()))
     }
 
     /// Returns `true` if enough parts are complete to safely generate the new key.
     pub fn is_ready(&self) -> bool {
-        self.count_complete() > self.parts_threshold
+        self.count_complete() == self.pub_keys.len()
     }
 
     /// Returns the new secret key share and the public key set.
@@ -372,7 +367,7 @@ impl<N: NodeIdT> SyncKeyGen<N> {
     pub fn generate(&self) -> Result<(PublicKeySet, Option<SecretKeyShare>), Error> {
         let mut pk_commit = Poly::zero().commitment();
         let mut opt_sk_val = self.our_idx.map(|_| Fr::zero());
-        let is_complete = |part: &&ProposalState| part.is_complete(self.parts_threshold);
+        let is_complete = |part: &&ProposalState| part.is_complete(self.pub_keys.len());
         for part in self.parts.values().filter(is_complete) {
             pk_commit += part.commit.row(0);
             if let Some(sk_val) = opt_sk_val.as_mut() {
