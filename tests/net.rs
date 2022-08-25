@@ -129,15 +129,15 @@ impl Net {
             packet.vote, packet.dest, resp
         );
         match resp {
-            Ok(VoteResponse::WaitingForMoreVotes) => {}
-            Ok(VoteResponse::BroadcastVote(vote)) => {
+            Ok((VoteResponse::WaitingForMoreVotes, _is_new_vote)) => {}
+            Ok((VoteResponse::BroadcastVote(vote), _is_new_vote)) => {
                 let dest_actor = packet.dest;
                 self.broadcast(dest_actor, *vote);
             }
-            Ok(VoteResponse::RequestAntiEntropy) => {
+            Ok((VoteResponse::RequestAntiEntropy, _is_new_vote)) => {
                 // AE TODO
             }
-            Ok(VoteResponse::DkgComplete(_pub_keys, _sec_key)) => {
+            Ok((VoteResponse::DkgComplete(_pub_keys, _sec_key), _is_new_vote)) => {
                 info!("[NET] DkgComplete for {:?}", packet.dest);
                 // Termination TODO
             }
