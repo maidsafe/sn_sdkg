@@ -45,16 +45,21 @@ enum DkgCurrentState {
     WaitingForMoreParts,
 }
 
-impl<R: bls::rand::RngCore + Clone> DkgState<R> {
+impl<R: bls::rand::RngCore> DkgState<R> {
     pub fn new(
         our_id: NodeId,
         secret_key: SecretKey,
         pub_keys: BTreeMap<NodeId, PublicKey>,
         threshold: usize,
-        rng: &mut R,
+        mut rng: R,
     ) -> Result<Self> {
-        let (sync_key_gen, opt_part) =
-            SyncKeyGen::new(our_id, secret_key.clone(), pub_keys.clone(), threshold, rng)?;
+        let (sync_key_gen, opt_part) = SyncKeyGen::new(
+            our_id,
+            secret_key.clone(),
+            pub_keys.clone(),
+            threshold,
+            &mut rng,
+        )?;
         Ok(DkgState {
             id: our_id,
             secret_key,
@@ -62,7 +67,7 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
             keygen: sync_key_gen,
             all_votes: BTreeSet::new(),
             our_part: opt_part.ok_or(Error::NotInPubKeySet)?,
-            rng: rng.clone(),
+            rng,
         })
     }
 
