@@ -25,13 +25,13 @@ pub struct Packet {
 }
 
 pub struct Net {
-    pub procs: Vec<DkgState<bls::rand::rngs::OsRng>>,
+    pub procs: Vec<DkgState>,
     pub packets: BTreeMap<NodeId, VecDeque<Packet>>,
     pub delivered_packets: Vec<Packet>,
 }
 
 impl Net {
-    pub fn with_procs(threshold: usize, n: usize, rng: OsRng) -> Self {
+    pub fn with_procs(threshold: usize, n: usize, rng: &mut OsRng) -> Self {
         let sec_keys: Vec<SecretKey> = (0..n).map(|_| bls::rand::random()).collect();
         let pub_keys: BTreeMap<NodeId, PublicKey> = sec_keys
             .iter()
@@ -103,7 +103,7 @@ impl Net {
         self.packets.get_mut(&source).map(VecDeque::pop_front);
     }
 
-    pub fn deliver_packet_from_source(&mut self, source: NodeId) -> Result<()> {
+    pub fn deliver_packet_from_source(&mut self, source: NodeId, rng: &mut OsRng) -> Result<()> {
         let packet = match self.packets.get_mut(&source).map(|ps| ps.pop_front()) {
             Some(Some(p)) => p,
             _ => return Ok(()), // nothing to do
@@ -123,7 +123,7 @@ impl Net {
             }
         };
 
-        let resp = dest_proc.handle_signed_vote(packet.vote.clone());
+        let resp = dest_proc.handle_signed_vote(packet.vote.clone(), rng);
         info!(
             "[NET] vote {:?} resp from {}: {:?}",
             packet.vote, packet.dest, resp
@@ -168,9 +168,9 @@ impl Net {
         self.enqueue_packets(packets);
     }
 
-    pub fn drain_queued_packets(&mut self) -> Result<()> {
+    pub fn drain_queued_packets(&mut self, rng: &mut OsRng) -> Result<()> {
         while let Some(source) = self.packets.keys().next().cloned() {
-            self.deliver_packet_from_source(source)?;
+            self.deliver_packet_from_source(source, rng)?;
             self.purge_empty_queues();
         }
         Ok(())
