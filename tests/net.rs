@@ -31,7 +31,7 @@ pub struct Net {
 }
 
 impl Net {
-    pub fn with_procs(threshold: usize, n: usize, rng: &mut OsRng) -> Self {
+    pub fn with_procs(threshold: usize, n: usize, mut rng: OsRng) -> Self {
         let sec_keys: Vec<SecretKey> = (0..n).map(|_| bls::rand::random()).collect();
         let pub_keys: BTreeMap<NodeId, PublicKey> = sec_keys
             .iter()
@@ -49,7 +49,7 @@ impl Net {
                     sec_key.clone(),
                     pub_keys.clone(),
                     threshold,
-                    rng,
+                    &mut rng,
                 )
                 .unwrap()
             })
@@ -168,9 +168,9 @@ impl Net {
         self.enqueue_packets(packets);
     }
 
-    pub fn drain_queued_packets(&mut self, rng: &mut OsRng) -> Result<()> {
+    pub fn drain_queued_packets(&mut self, mut rng: OsRng) -> Result<()> {
         while let Some(source) = self.packets.keys().next().cloned() {
-            self.deliver_packet_from_source(source, rng)?;
+            self.deliver_packet_from_source(source, &mut rng)?;
             self.purge_empty_queues();
         }
         Ok(())

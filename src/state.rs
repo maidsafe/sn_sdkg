@@ -50,10 +50,15 @@ impl DkgState {
         secret_key: SecretKey,
         pub_keys: BTreeMap<NodeId, PublicKey>,
         threshold: usize,
-        rng: &mut R,
+        mut rng: R,
     ) -> Result<Self> {
-        let (sync_key_gen, opt_part) =
-            SyncKeyGen::new(our_id, secret_key.clone(), pub_keys.clone(), threshold, rng)?;
+        let (sync_key_gen, opt_part) = SyncKeyGen::new(
+            our_id,
+            secret_key.clone(),
+            pub_keys.clone(),
+            threshold,
+            &mut rng,
+        )?;
         Ok(DkgState {
             id: our_id,
             secret_key,
@@ -174,11 +179,14 @@ impl DkgState {
     fn parts_into_acks<R: bls::rand::RngCore>(
         &mut self,
         parts: BTreeSet<IdPart>,
-        rng: &mut R,
+        mut rng: R,
     ) -> Result<DkgVote> {
         let mut acks = BTreeMap::new();
         for (sender_id, part) in parts {
-            match self.keygen.handle_part(&sender_id, part.clone(), rng)? {
+            match self
+                .keygen
+                .handle_part(&sender_id, part.clone(), &mut rng)?
+            {
                 PartOutcome::Valid(Some(ack)) => {
                     acks.insert((sender_id, part), ack);
                 }
@@ -226,7 +234,7 @@ impl DkgState {
     pub fn handle_signed_vote<R: bls::rand::RngCore>(
         &mut self,
         msg: DkgSignedVote
-        rng: &mut R,
+        rng: R,
     ) -> Result<VoteResponse> {
         // if already seen it, ignore it
         if self.all_votes.contains(&msg) {
