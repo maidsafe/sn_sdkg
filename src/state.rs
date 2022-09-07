@@ -233,7 +233,7 @@ impl DkgState {
     /// Consider we reached completion when we received everyone's signatures over the AllAcks
     pub fn handle_signed_vote<R: bls::rand::RngCore>(
         &mut self,
-        msg: DkgSignedVote
+        msg: DkgSignedVote,
         rng: R,
     ) -> Result<VoteResponse> {
         // if already seen it, ignore it
