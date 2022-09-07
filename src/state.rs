@@ -28,6 +28,7 @@ pub struct DkgState<R: bls::rand::RngCore> {
 
 pub enum VoteResponse {
     WaitingForMoreVotes,
+    IgnoringKnownVote,
     BroadcastVote(Box<DkgSignedVote>),
     RequestAntiEntropy,
     DkgComplete(PublicKeySet, SecretKeyShare),
@@ -223,8 +224,12 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
     /// - SingleAck when got all parts
     /// - AllAcks when got all acks
     /// Consider we reached completion when we received everyone's signatures over the AllAcks
-    /// Returns a VoteResponse along with a boolean indicating whether we the vote is new
-    pub fn handle_signed_vote(&mut self, msg: DkgSignedVote) -> Result<(VoteResponse, bool)> {
+    pub fn handle_signed_vote(&mut self, msg: DkgSignedVote) -> Result<VoteResponse> {
+        // if already seen it, ignore it
+        if self.all_votes.contains(&msg) {
+            return Ok(VoteResponse::IgnoringKnownVote);
+        }
+
         // immediately bail if signature check fails
         let last_vote = self.get_validated_vote(&msg)?;
 
@@ -235,34 +240,26 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
 
         // act accordingly
         match dkg_state {
-            DkgCurrentState::NeedAntiEntropy => Ok((VoteResponse::RequestAntiEntropy, is_new_vote)),
+            DkgCurrentState::NeedAntiEntropy => Ok(VoteResponse::RequestAntiEntropy),
             DkgCurrentState::Termination(acks) => {
                 self.handle_all_acks(acks)?;
                 if let (pubs, Some(sec)) = self.keygen.generate()? {
-                    Ok((VoteResponse::DkgComplete(pubs, sec), is_new_vote))
+                    Ok(VoteResponse::DkgComplete(pubs, sec))
                 } else {
                     Err(Error::FailedToGenerateSecretKeyShare)
                 }
             }
             DkgCurrentState::GotAllAcks(acks) => {
                 let vote = DkgVote::AllAcks(acks);
-                Ok((
-                    VoteResponse::BroadcastVote(Box::new(self.cast_vote(vote)?)),
-                    is_new_vote,
-                ))
+                Ok(VoteResponse::BroadcastVote(Box::new(self.cast_vote(vote)?)))
             }
             DkgCurrentState::GotAllParts(parts) => {
                 let vote = self.parts_into_acks(parts)?;
-                Ok((
-                    VoteResponse::BroadcastVote(Box::new(self.cast_vote(vote)?)),
-                    is_new_vote,
-                ))
+                Ok(VoteResponse::BroadcastVote(Box::new(self.cast_vote(vote)?)))
             }
             DkgCurrentState::WaitingForMoreParts
             | DkgCurrentState::WaitingForMoreAcks(_)
-            | DkgCurrentState::WaitingForTotalAgreement(_) => {
-                Ok((VoteResponse::WaitingForMoreVotes, is_new_vote))
-            }
+            | DkgCurrentState::WaitingForTotalAgreement(_) => Ok(VoteResponse::WaitingForMoreVotes),
             DkgCurrentState::IncompatibleVotes => {
                 Err(Error::FaultyVote("got incompatible votes".to_string()))
             }
