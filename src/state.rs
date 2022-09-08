@@ -227,6 +227,13 @@ impl DkgState {
         }
     }
 
+    /// Checks if we reached termination
+    pub fn reached_termination(&self) -> Result<bool> {
+        let votes = self.all_checked_votes()?;
+        let state = self.current_dkg_state(votes);
+        Ok(matches!(state, DkgCurrentState::Termination(_)))
+    }
+
     /// Handle a DKG vote, save the information if we learned any, broadcast:
     /// - SingleAck when got all parts
     /// - AllAcks when got all acks
