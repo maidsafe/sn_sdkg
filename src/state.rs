@@ -16,14 +16,13 @@ use crate::vote::{DkgSignedVote, DkgVote, IdAck, IdPart, NodeId};
 
 /// State of the Dkg session, contains the sync keygen and currently known Parts and Acks
 /// Can handle votes coming from other participants
-pub struct DkgState<R: bls::rand::RngCore> {
+pub struct DkgState {
     id: NodeId,
     secret_key: SecretKey,
     pub_keys: BTreeMap<NodeId, PublicKey>,
     keygen: SyncKeyGen<NodeId>,
     our_part: Part,
     all_votes: BTreeSet<DkgSignedVote>,
-    rng: R,
 }
 
 pub enum VoteResponse {
@@ -45,16 +44,21 @@ enum DkgCurrentState {
     WaitingForMoreParts,
 }
 
-impl<R: bls::rand::RngCore + Clone> DkgState<R> {
-    pub fn new(
+impl DkgState {
+    pub fn new<R: bls::rand::RngCore>(
         our_id: NodeId,
         secret_key: SecretKey,
         pub_keys: BTreeMap<NodeId, PublicKey>,
         threshold: usize,
-        rng: &mut R,
+        mut rng: R,
     ) -> Result<Self> {
-        let (sync_key_gen, opt_part) =
-            SyncKeyGen::new(our_id, secret_key.clone(), pub_keys.clone(), threshold, rng)?;
+        let (sync_key_gen, opt_part) = SyncKeyGen::new(
+            our_id,
+            secret_key.clone(),
+            pub_keys.clone(),
+            threshold,
+            &mut rng,
+        )?;
         Ok(DkgState {
             id: our_id,
             secret_key,
@@ -62,7 +66,6 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
             keygen: sync_key_gen,
             all_votes: BTreeSet::new(),
             our_part: opt_part.ok_or(Error::NotInPubKeySet)?,
-            rng: rng.clone(),
         })
     }
 
@@ -173,12 +176,16 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
     }
 
     /// Handles the Parts to create the Acks
-    fn parts_into_acks(&mut self, parts: BTreeSet<IdPart>) -> Result<DkgVote> {
+    fn parts_into_acks<R: bls::rand::RngCore>(
+        &mut self,
+        parts: BTreeSet<IdPart>,
+        mut rng: R,
+    ) -> Result<DkgVote> {
         let mut acks = BTreeMap::new();
         for (sender_id, part) in parts {
             match self
                 .keygen
-                .handle_part(&sender_id, part.clone(), &mut self.rng)?
+                .handle_part(&sender_id, part.clone(), &mut rng)?
             {
                 PartOutcome::Valid(Some(ack)) => {
                     acks.insert((sender_id, part), ack);
@@ -224,7 +231,11 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
     /// - SingleAck when got all parts
     /// - AllAcks when got all acks
     /// Consider we reached completion when we received everyone's signatures over the AllAcks
-    pub fn handle_signed_vote(&mut self, msg: DkgSignedVote) -> Result<VoteResponse> {
+    pub fn handle_signed_vote<R: bls::rand::RngCore>(
+        &mut self,
+        msg: DkgSignedVote,
+        rng: R,
+    ) -> Result<VoteResponse> {
         // if already seen it, ignore it
         if self.all_votes.contains(&msg) {
             return Ok(VoteResponse::IgnoringKnownVote);
@@ -254,7 +265,7 @@ impl<R: bls::rand::RngCore + Clone> DkgState<R> {
                 Ok(VoteResponse::BroadcastVote(Box::new(self.cast_vote(vote)?)))
             }
             DkgCurrentState::GotAllParts(parts) => {
-                let vote = self.parts_into_acks(parts)?;
+                let vote = self.parts_into_acks(parts, rng)?;
                 Ok(VoteResponse::BroadcastVote(Box::new(self.cast_vote(vote)?)))
             }
             DkgCurrentState::WaitingForMoreParts

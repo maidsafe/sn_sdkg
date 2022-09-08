@@ -26,8 +26,8 @@ fn init() {
 fn test_normal_dkg_no_packet_drops() {
     init();
     // make network of 10 members
-    let mut rng = bls::rand::rngs::OsRng;
-    let mut net = Net::with_procs(7, 10, &mut rng);
+    let rng = bls::rand::rngs::OsRng;
+    let mut net = Net::with_procs(7, 10, rng);
 
     // bcast everyone's first Part
     let all_parts: Vec<_> = net
@@ -46,7 +46,7 @@ fn test_normal_dkg_no_packet_drops() {
     }
 
     // let everyone vote
-    net.drain_queued_packets().unwrap();
+    net.drain_queued_packets(rng).unwrap();
 
     // check that everyone reached termination on the same pubkeyset
     let mut pubs = BTreeSet::new();
@@ -64,8 +64,8 @@ fn test_normal_dkg_no_packet_drops() {
 fn test_dkg_inconsistant_votes() {
     init();
     // make network of 1 evil doer (id 0) and 2 good members
-    let mut rng = bls::rand::rngs::OsRng;
-    let mut net = Net::with_procs(2, 3, &mut rng);
+    let rng = bls::rand::rngs::OsRng;
+    let mut net = Net::with_procs(2, 3, rng);
 
     // get everyone's first Part
     let all_parts: Vec<_> = net
@@ -89,7 +89,8 @@ fn test_dkg_inconsistant_votes() {
     net.enqueue_packets([faulty_packet].into_iter());
 
     // let everyone vote, make sure voting process triggers FaultyVote error
-    let res = net.drain_queued_packets();
+    let rng = bls::rand::rngs::OsRng;
+    let res = net.drain_queued_packets(rng);
     assert!(matches!(res, Err(Error::FaultyVote(_))));
 
     // check that no one reached termination
