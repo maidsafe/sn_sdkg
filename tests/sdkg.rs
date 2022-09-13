@@ -50,7 +50,7 @@ fn test_normal_dkg_no_packet_drops() {
 
     // check that everyone reached termination on the same pubkeyset
     let mut pubs = BTreeSet::new();
-    for mut node in net.procs.into_iter() {
+    for node in net.procs.into_iter() {
         let (pks, _sks) = node
             .outcome()
             .expect("Unexpectedly failed to generate keypair")
@@ -94,7 +94,7 @@ fn test_dkg_inconsistant_votes() {
     assert!(matches!(res, Err(Error::FaultyVote(_))));
 
     // check that no one reached termination
-    for mut node in net.procs.into_iter() {
+    for node in net.procs.into_iter() {
         assert!(node.outcome().unwrap().is_none())
     }
 }

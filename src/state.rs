@@ -212,11 +212,11 @@ impl DkgState {
     }
 
     /// After termination, returns Some keypair else returns None
-    // NB: it recomputes everything from current knowledge instead of using a cached result
-    pub fn outcome(&mut self) -> Result<Option<(PublicKeySet, SecretKeyShare)>> {
+    /// This function assumes that the Acks have been processed before hand
+    /// when receiving the final ack vote
+    pub fn outcome(&self) -> Result<Option<(PublicKeySet, SecretKeyShare)>> {
         let votes = self.all_checked_votes()?;
-        if let DkgCurrentState::Termination(acks) = self.current_dkg_state(votes) {
-            self.handle_all_acks(acks)?;
+        if let DkgCurrentState::Termination(_) = self.current_dkg_state(votes) {
             if let (pubs, Some(sec)) = self.keygen.generate()? {
                 Ok(Some((pubs, sec)))
             } else {
