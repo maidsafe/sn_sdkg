@@ -19,6 +19,6 @@ jobs:
         with:
           fetch-depth: '0'
       - name: Bump Version
-        uses: maidsafe/rust-version-bump-branch-creator@v2
+        uses: jacderida/rust-version-bump-branch-creator@debugging-info
         with:
           token: ${{ secrets.BRANCH_CREATOR_TOKEN }}
