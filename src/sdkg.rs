@@ -507,7 +507,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     #[test]
-    fn test_dkg() {
+    fn test_sdkg() {
         // Use the OS random number generator for any randomness:
         // let mut rng = bls::rand::rngs::OsRng::fill_bytes([0u8; 16]);
         let mut rng = bls::rand::rngs::OsRng;

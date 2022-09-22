@@ -25,11 +25,17 @@ pub struct DkgState {
     all_votes: BTreeSet<DkgSignedVote>,
 }
 
+/// State after handling a vote
 pub enum VoteResponse {
+    /// We need more votes to decide on anything yet
     WaitingForMoreVotes,
+    /// This vote has already been processed
     IgnoringKnownVote,
+    /// Broadcast our vote to the other participants
     BroadcastVote(Box<DkgSignedVote>),
+    /// We are missing information to understand this vote
     RequestAntiEntropy,
+    /// DKG is completed on our side
     DkgComplete(PublicKeySet, SecretKeyShare),
 }
 
@@ -45,6 +51,9 @@ enum DkgCurrentState {
 }
 
 impl DkgState {
+    /// Creates a new DkgState for a new DKG session with all the participants in `pub_keys`
+    /// Each participant needs to have a unique NodeId and a unique public key
+    /// The threshold is the desired threshold for the generated bls key set
     pub fn new<R: bls::rand::RngCore>(
         our_id: NodeId,
         secret_key: SecretKey,
@@ -69,6 +78,7 @@ impl DkgState {
         })
     }
 
+    /// Our own NodeId
     pub fn id(&self) -> NodeId {
         self.id
     }
