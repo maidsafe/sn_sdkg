@@ -130,6 +130,15 @@ impl DkgState {
         }
     }
 
+    // checks in our current knowledge if we sent our AllAcks
+    fn we_sent_our_all_acks(&self) -> bool {
+        let our_id = self.id();
+        self.all_votes
+            .iter()
+            .filter(|v| v.is_all_acks())
+            .any(|v| v.voter == our_id)
+    }
+
     // Current DKG state taking last vote's type into account
     fn dkg_state_with_vote(
         &self,
@@ -146,10 +155,9 @@ impl DkgState {
             {
                 DkgCurrentState::GotAllParts(parts)
             }
-            // Similarly this happens when we receive the last Ack but we already received
-            // someone's agreement on all acks before, making us skip GotAllAcks
+            // Another case is when we didn't send our own AllAcks yet
             DkgCurrentState::WaitingForTotalAgreement(part_acks)
-                if is_new && matches!(vote, DkgVote::SingleAck(_)) =>
+                if !self.we_sent_our_all_acks() =>
             {
                 DkgCurrentState::GotAllAcks(part_acks)
             }
