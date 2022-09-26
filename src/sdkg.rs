@@ -502,9 +502,10 @@ pub enum PartFault {
 
 #[cfg(test)]
 mod tests {
-    use super::{AckOutcome, PartOutcome, SyncKeyGen};
+    use super::{Ack, AckOutcome, Part, PartOutcome, SyncKeyGen};
     use bls::{PublicKey, PublicKeySet, SecretKey, SecretKeyShare, SignatureShare};
-    use std::collections::BTreeMap;
+    use eyre::{eyre, Result};
+    use std::collections::{BTreeMap, BTreeSet};
 
     #[test]
     fn test_sdkg() {
@@ -606,96 +607,14 @@ mod tests {
         assert!(pub_key_set.public_key().verify(&sig, msg));
     }
 
-    fn gen_dkg_key(
-        threshold: usize,
-        node_num: usize,
-    ) -> (Vec<(usize, SecretKeyShare)>, PublicKeySet) {
-        // Use the OS random number generator for any randomness:
-        // let mut rng = bls::rand::rngs::OsRng::fill_bytes([0u8; 16]);
-        let mut rng = bls::rand::rngs::OsRng;
-
-        // Generate individual key pairs for encryption. These are not suitable for threshold schemes.
-        let sec_keys: Vec<SecretKey> = (0..node_num).map(|_| bls::rand::random()).collect();
-        let pub_keys: BTreeMap<usize, PublicKey> = sec_keys
-            .iter()
-            .map(SecretKey::public_key)
-            .enumerate()
-            .collect();
-
-        // Create the `SyncKeyGen` instances. The constructor also outputs the part that needs to
-        // be sent to all other participants, so we save the parts together with their sender ID.
-        let mut nodes = BTreeMap::new();
-        let mut parts = Vec::new();
-        for (id, sk) in sec_keys.into_iter().enumerate() {
-            let (sync_key_gen, opt_part) =
-                SyncKeyGen::new(id, sk, pub_keys.clone(), threshold, &mut rng).unwrap_or_else(
-                    |_| panic!("Failed to create `SyncKeyGen` instance for node #{}", id),
-                );
-            nodes.insert(id, sync_key_gen);
-            parts.push((id, opt_part.unwrap())); // Would be `None` for observer nodes.
-        }
-
-        // All nodes now handle the parts and send the resulting `Ack` messages.
-        let mut acks = Vec::new();
-        for (sender_id, part) in parts {
-            for (&id, node) in &mut nodes {
-                match node
-                    .handle_part(&sender_id, part.clone(), &mut rng)
-                    .expect("Failed to handle Part")
-                {
-                    PartOutcome::Valid(Some(ack)) => acks.push((id, ack)),
-                    PartOutcome::Invalid(fault) => panic!("Invalid Part: {:?}", fault),
-                    PartOutcome::Valid(None) => {
-                        panic!("We are not an observer, so we should send Ack.")
-                    }
-                }
-            }
-        }
-
-        // Finally, we handle all the `Ack`s.
-        for (sender_id, ack) in acks {
-            for node in nodes.values_mut() {
-                match node
-                    .handle_ack(&sender_id, ack.clone())
-                    .expect("Failed to handle Ack")
-                {
-                    AckOutcome::Valid => (),
-                    AckOutcome::Invalid(fault) => panic!("Invalid Ack: {:?}", fault),
-                }
-            }
-        }
-
-        // We have all the information and can generate the key sets.
-        // Generate the public key set; which is identical for all nodes.
-        let pub_key_set = nodes[&0]
-            .generate()
-            .expect("Failed to create `PublicKeySet` from node #0")
-            .0;
-        let mut secret_key_shares = Vec::new();
-        for (&id, node) in &mut nodes {
-            assert!(node.is_ready());
-            let (pks, opt_sks) = node.generate().unwrap_or_else(|_| {
-                panic!(
-                    "Failed to create `PublicKeySet` and `SecretKeyShare` for node #{}",
-                    id
-                )
-            });
-            assert_eq!(pks, pub_key_set); // All nodes now know the public keys and public key shares.
-            let sks = opt_sks.expect("Not an observer node: We receive a secret key share.");
-            secret_key_shares.push((id, sks));
-        }
-
-        (secret_key_shares, pub_key_set)
-    }
-
     #[test]
-    fn test_threshold() {
-        for nodes_num in 2..=7 {
+    fn test_threshold() -> Result<()> {
+        for nodes_num in 2..10 {
             // for threshold in 1..((nodes_num-1)/2+1) {
             for threshold in 1..nodes_num {
                 println!("Testing for threshold {}/{}...", threshold, nodes_num);
 
-                let (secret_key_shares, pub_key_set) = gen_dkg_key(threshold, nodes_num);
+                let (secret_key_shares, pub_key_set) = simulate_dkg_round(nodes_num, threshold)?;
                 let msg = "signed message";
 
                 // check threshold + 1 sigs matches master key
@@ -708,7 +627,7 @@ mod tests {
                 }
                 let sig = pub_key_set
                     .combine_signatures(&sig_shares)
-                    .expect("The shares can be combined.");
+                    .map_err(|err| eyre!("The shares can be combined: {err:?}"))?;
                 assert!(pub_key_set.public_key().verify(&sig, msg));
 
                 // check threshold sigs are not enough to match master key
@@ -722,5 +641,130 @@ mod tests {
                 let _sig = pub_key_set.combine_signatures(&sig_shares).is_err();
             }
         }
+        Ok(())
+    }
+
+    // Test helpers
+    fn init_nodes<R: bls::rand::RngCore>(
+        num_nodes: usize,
+        threshold: usize,
+        rng: &mut R,
+    ) -> Result<(BTreeMap<usize, SyncKeyGen<usize>>, Vec<(usize, Part)>)> {
+        let sec_keys: Vec<SecretKey> = (0..num_nodes).map(|_| bls::rand::random()).collect();
+        let pub_keys: BTreeMap<usize, PublicKey> = sec_keys
+            .iter()
+            .map(SecretKey::public_key)
+            .enumerate()
+            .collect();
+
+        let mut nodes = BTreeMap::new();
+        let mut parts = Vec::new();
+        for (id, sk) in sec_keys.clone().into_iter().enumerate() {
+            let (sync_key_gen, opt_part) =
+                SyncKeyGen::new(id, sk, pub_keys.clone(), threshold, rng)?;
+            nodes.insert(id, sync_key_gen);
+            parts.push((id, opt_part.unwrap())); // Would be `None` for observer nodes.
+        }
+
+        Ok((nodes, parts))
+    }
+
+    fn handle_parts<R: bls::rand::RngCore>(
+        nodes: &mut BTreeMap<usize, SyncKeyGen<usize>>,
+        parts: &Vec<(usize, Part)>,
+        rng: &mut R,
+    ) -> Result<Vec<(usize, Ack)>> {
+        let mut acks = Vec::new();
+        for (sender_id, part) in parts {
+            for (&id, node) in nodes.iter_mut() {
+                match node.handle_part(&sender_id, part.clone(), rng)? {
+                    PartOutcome::Valid(Some(ack)) => acks.push((id, ack)),
+                    _ => return Err(eyre!("We are an observer/invalid part")),
+                }
+            }
+        }
+        Ok(acks)
+    }
+
+    fn handle_acks(
+        nodes: &mut BTreeMap<usize, SyncKeyGen<usize>>,
+        acks: &Vec<(usize, Ack)>,
+    ) -> Result<()> {
+        for (sender_id, ack) in acks {
+            for node in nodes.values_mut() {
+                match node
+                    .handle_ack(&sender_id, ack.clone())
+                    .map_err(|err| eyre!("Failed to handle Ack {err:?}"))?
+                {
+                    AckOutcome::Valid => (),
+                    AckOutcome::Invalid(fault) => return Err(eyre!("Invalid Ack {fault:?}")),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn gen_key_share(
+        nodes: &mut BTreeMap<usize, SyncKeyGen<usize>>,
+    ) -> Result<(Vec<(usize, SecretKeyShare)>, PublicKeySet)> {
+        let mut pk_set = BTreeSet::new();
+
+        let mut secret_key_shares = Vec::new();
+        for (&id, node) in nodes {
+            if !node.is_ready() {
+                return Err(eyre!("Node: {id} is not ready"));
+            }
+            let (pks, opt_sks) = node.generate()?;
+            let sks = opt_sks.ok_or_else(|| eyre!("Node: {id} is an observer"))?;
+            pk_set.insert(pks);
+            secret_key_shares.push((id, sks));
+        }
+
+        // verify that they produced a single pks
+        if pk_set.len() != 1 {
+            return Err(eyre!("The pub_key_set is not the same for all the nodes"));
+        }
+        let pk_set = Vec::from_iter(pk_set.into_iter());
+
+        Ok((secret_key_shares, pk_set[0].clone()))
+    }
+
+    fn simulate_dkg_round(
+        num_nodes: usize,
+        threshold: usize,
+    ) -> Result<(Vec<(usize, SecretKeyShare)>, PublicKeySet)> {
+        let mut rng = bls::rand::rngs::OsRng;
+
+        let (mut nodes, parts) = init_nodes(num_nodes, threshold, &mut rng)?;
+        let acks = handle_parts(&mut nodes, &parts, &mut rng)?;
+        handle_acks(&mut nodes, &acks)?;
+        gen_key_share(&mut nodes)
+    }
+
+    #[allow(dead_code)]
+    fn verify_threshold(
+        threshold: usize,
+        sk_shares: &Vec<(usize, SecretKeyShare)>,
+        pk_set: &PublicKeySet,
+    ) -> Result<()> {
+        let msg = "verify threshold";
+        let mut sig_shares: BTreeMap<usize, SignatureShare> = BTreeMap::new();
+
+        for (id, sks) in sk_shares.iter().take(threshold + 1) {
+            let sig_share = sks.sign(msg);
+            let pks = pk_set.public_key_share(id);
+            if !pks.verify(&sig_share, msg) {
+                return Err(eyre!("The pub_key_share cannot verify the sig"));
+            }
+            sig_shares.insert(*id, sig_share);
+        }
+
+        let sig = pk_set.combine_signatures(&sig_shares)?;
+
+        if !pk_set.public_key().verify(&sig, msg) {
+            return Err(eyre!("The pub_key_set cannot verify the sig"));
+        }
+
+        Ok(())
     }
 }
