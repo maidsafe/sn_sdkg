@@ -69,4 +69,9 @@ impl DkgSignedVote {
         verify_sig(&self.vote, &self.sig, public_key)?;
         Ok(self.vote.clone())
     }
+
+    /// Helper that checks if underlying vote is AllAcks
+    pub(crate) fn is_all_acks(&self) -> bool {
+        matches!(self.vote, DkgVote::AllAcks(_))
+    }
 }
