@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.1](https://github.com/maidsafe/sn_sdkg/compare/v1.1.0...v1.1.1) (2022-09-26)
+
+
+### Bug Fixes
+
+* issue when we are last to ack, we dont send allacks ([#22](https://github.com/maidsafe/sn_sdkg/issues/22)) ([32b6b3e](https://github.com/maidsafe/sn_sdkg/commit/32b6b3ee9b6a40c5e53a703861d61373dfd5b691))
+
 ## 1.1.0 (2022-09-22)
 
 
