@@ -41,7 +41,8 @@ pub enum VoteResponse {
 
 enum DkgCurrentState {
     IncompatibleVotes,
-    NeedAntiEntropy,
+    MissingParts,
+    MissingAcks,
     Termination(BTreeMap<IdPart, BTreeSet<IdAck>>),
     WaitingForTotalAgreement(BTreeMap<IdPart, BTreeSet<IdAck>>),
     GotAllAcks(BTreeMap<IdPart, BTreeSet<IdAck>>),
@@ -108,8 +109,11 @@ impl DkgState {
             Err(KnowledgeFault::IncompatibleAcks) | Err(KnowledgeFault::IncompatibleParts) => {
                 return DkgCurrentState::IncompatibleVotes;
             }
-            Err(KnowledgeFault::MissingParts) | Err(KnowledgeFault::MissingAcks) => {
-                return DkgCurrentState::NeedAntiEntropy;
+            Err(KnowledgeFault::MissingParts) => {
+                return DkgCurrentState::MissingParts;
+            }
+            Err(KnowledgeFault::MissingAcks) => {
+                return DkgCurrentState::MissingAcks;
             }
             Ok(k) => k,
         };
@@ -160,6 +164,15 @@ impl DkgState {
                 if !self.we_sent_our_all_acks() =>
             {
                 DkgCurrentState::GotAllAcks(part_acks)
+            }
+            // This is when we already have votes for the next step in store so our global state
+            // is that we're missing votes, since this vote is of the expected type,
+            // we don't need to report the error again
+            DkgCurrentState::MissingParts if matches!(vote, DkgVote::SinglePart(_)) => {
+                DkgCurrentState::WaitingForMoreParts
+            }
+            DkgCurrentState::MissingAcks if matches!(vote, DkgVote::SingleAck(_)) => {
+                DkgCurrentState::WaitingForMoreAcks(Default::default())
             }
             _ => dkg_state,
         }
@@ -276,7 +289,9 @@ impl DkgState {
 
         // act accordingly
         match dkg_state {
-            DkgCurrentState::NeedAntiEntropy => Ok(VoteResponse::RequestAntiEntropy),
+            DkgCurrentState::MissingParts | DkgCurrentState::MissingAcks => {
+                Ok(VoteResponse::RequestAntiEntropy)
+            }
             DkgCurrentState::Termination(acks) => {
                 self.handle_all_acks(acks)?;
                 if let (pubs, Some(sec)) = self.keygen.generate()? {
