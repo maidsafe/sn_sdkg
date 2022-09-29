@@ -501,7 +501,7 @@ pub enum PartFault {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{Ack, AckOutcome, Part, PartOutcome, SyncKeyGen};
     use bls::{PublicKey, PublicKeySet, SecretKey, SecretKeyShare, SignatureShare};
     use eyre::{eyre, Result};
@@ -645,6 +645,7 @@ mod tests {
     }
 
     // Test helpers
+    #[allow(clippy::type_complexity)]
     fn init_nodes<R: bls::rand::RngCore>(
         num_nodes: usize,
         threshold: usize,
@@ -659,7 +660,7 @@ mod tests {
 
         let mut nodes = BTreeMap::new();
         let mut parts = Vec::new();
-        for (id, sk) in sec_keys.clone().into_iter().enumerate() {
+        for (id, sk) in sec_keys.into_iter().enumerate() {
             let (sync_key_gen, opt_part) =
                 SyncKeyGen::new(id, sk, pub_keys.clone(), threshold, rng)?;
             nodes.insert(id, sync_key_gen);
@@ -677,7 +678,7 @@ mod tests {
         let mut acks = Vec::new();
         for (sender_id, part) in parts {
             for (&id, node) in nodes.iter_mut() {
-                match node.handle_part(&sender_id, part.clone(), rng)? {
+                match node.handle_part(sender_id, part.clone(), rng)? {
                     PartOutcome::Valid(Some(ack)) => acks.push((id, ack)),
                     _ => return Err(eyre!("We are an observer/invalid part")),
                 }
@@ -693,7 +694,7 @@ mod tests {
         for (sender_id, ack) in acks {
             for node in nodes.values_mut() {
                 match node
-                    .handle_ack(&sender_id, ack.clone())
+                    .handle_ack(sender_id, ack.clone())
                     .map_err(|err| eyre!("Failed to handle Ack {err:?}"))?
                 {
                     AckOutcome::Valid => (),
@@ -741,10 +742,9 @@ mod tests {
         gen_key_share(&mut nodes)
     }
 
-    #[allow(dead_code)]
-    fn verify_threshold(
+    pub(crate) fn verify_threshold(
         threshold: usize,
-        sk_shares: &Vec<(usize, SecretKeyShare)>,
+        sk_shares: &[(usize, SecretKeyShare)],
         pk_set: &PublicKeySet,
     ) -> Result<()> {
         let msg = "verify threshold";

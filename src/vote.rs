@@ -75,3 +75,25 @@ impl DkgSignedVote {
         matches!(self.vote, DkgVote::AllAcks(_))
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_utils {
+    use super::{DkgSignedVote, DkgVote};
+
+    #[derive(Debug)]
+    pub(crate) enum MockDkgVote {
+        SinglePart,
+        SingleAck,
+        AllAcks,
+    }
+
+    impl DkgSignedVote {
+        pub(crate) fn mock(&self) -> MockDkgVote {
+            match self.vote {
+                DkgVote::SinglePart(_) => MockDkgVote::SinglePart,
+                DkgVote::SingleAck(_) => MockDkgVote::SingleAck,
+                DkgVote::AllAcks(_) => MockDkgVote::AllAcks,
+            }
+        }
+    }
+}
