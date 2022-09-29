@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [1.1.2](https://github.com/maidsafe/sn_sdkg/compare/v1.1.1...v1.1.2) (2022-09-29)
+
+
+### Bug Fixes
+
+* excessive AE requests ([#25](https://github.com/maidsafe/sn_sdkg/issues/25)) ([384b1db](https://github.com/maidsafe/sn_sdkg/commit/384b1dbb24ab972def016bc6a6b4abe365faf259))
+
 ### [1.1.1](https://github.com/maidsafe/sn_sdkg/compare/v1.1.0...v1.1.1) (2022-09-26)
 
 
