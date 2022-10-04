@@ -29,8 +29,6 @@ pub struct DkgState {
 pub enum VoteResponse {
     /// We need more votes to decide on anything yet
     WaitingForMoreVotes,
-    /// This vote has already been processed
-    IgnoringKnownVote,
     /// Broadcast our vote to the other participants
     BroadcastVote(Box<DkgSignedVote>),
     /// We are missing information to understand this vote
@@ -269,6 +267,8 @@ impl DkgState {
     /// - SingleAck when got all parts
     /// - AllAcks when got all acks
     /// Consider we reached completion when we received everyone's signatures over the AllAcks
+    /// Return a vec with the reactions to the handled vote
+    /// An empty vec means we didn't learn anything from this msg because we alread received it
     pub fn handle_signed_vote<R: bls::rand::RngCore>(
         &mut self,
         msg: DkgSignedVote,
@@ -276,7 +276,7 @@ impl DkgState {
     ) -> Result<Vec<VoteResponse>> {
         // if already seen it, ignore it
         if self.all_votes.contains(&msg) {
-            return Ok(vec![VoteResponse::IgnoringKnownVote]);
+            return Ok(vec![]);
         }
 
         // immediately bail if signature check fails
@@ -305,9 +305,11 @@ impl DkgState {
                 let signed_vote = self.signed_vote(vote)?;
                 let mut res = vec![VoteResponse::BroadcastVote(Box::new(signed_vote.clone()))];
                 let our_vote_res = self.handle_signed_vote(signed_vote, rng)?;
-                if !matches!(our_vote_res.as_slice(), [VoteResponse::WaitingForMoreVotes]) {
-                    res.extend(our_vote_res);
-                }
+                res.extend(
+                    our_vote_res
+                        .into_iter()
+                        .filter(|r| !matches!(r, VoteResponse::WaitingForMoreVotes)),
+                );
                 Ok(res)
             }
             DkgCurrentState::GotAllParts(parts) => {
@@ -315,9 +317,11 @@ impl DkgState {
                 let signed_vote = self.signed_vote(vote)?;
                 let mut res = vec![VoteResponse::BroadcastVote(Box::new(signed_vote.clone()))];
                 let our_vote_res = self.handle_signed_vote(signed_vote, rng)?;
-                if !matches!(our_vote_res.as_slice(), [VoteResponse::WaitingForMoreVotes]) {
-                    res.extend(our_vote_res);
-                }
+                res.extend(
+                    our_vote_res
+                        .into_iter()
+                        .filter(|r| !matches!(r, VoteResponse::WaitingForMoreVotes)),
+                );
                 Ok(res)
             }
             DkgCurrentState::WaitingForMoreParts

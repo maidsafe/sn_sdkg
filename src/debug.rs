@@ -26,7 +26,6 @@ impl fmt::Debug for VoteResponse {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             VoteResponse::WaitingForMoreVotes => write!(f, "WaitingForMoreVotes"),
-            VoteResponse::IgnoringKnownVote => write!(f, "IgnoringKnownVote"),
             VoteResponse::BroadcastVote(v) => write!(f, "BroadcastVote {:?}", *v),
             VoteResponse::RequestAntiEntropy => write!(f, "RequestAntiEntropy"),
             VoteResponse::DkgComplete(_, _) => write!(f, "DkgComplete"),

@@ -73,12 +73,9 @@ mod tests {
         // Handle the other participants Parts, obtain Acks
         // No need to handle our own vote
         // Participant 0 handles Parts
-        // We already know this vote (it's ours), just checking that it gives IgnoringKnownVote
+        // We already know this vote (it's ours), just checking that it gives vec![]
         let res = &dkg_state0.handle_signed_vote(part0.clone(), &mut rng);
-        assert!(matches!(
-            res.as_deref(),
-            Ok([VoteResponse::IgnoringKnownVote])
-        ));
+        assert!(matches!(res.as_deref(), Ok([])));
         let res = &dkg_state0.handle_signed_vote(part1.clone(), &mut rng);
         assert!(matches!(
             res.as_deref(),

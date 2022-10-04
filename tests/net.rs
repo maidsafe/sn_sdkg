@@ -139,7 +139,6 @@ impl Net {
         for r in res {
             match r {
                 VoteResponse::WaitingForMoreVotes => {}
-                VoteResponse::IgnoringKnownVote => {}
                 VoteResponse::BroadcastVote(vote) => {
                     let dest_actor = packet.dest;
                     self.broadcast(dest_actor, *vote);
