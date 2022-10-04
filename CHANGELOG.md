@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [3.0.0](https://github.com/maidsafe/sn_sdkg/compare/v2.0.0...v3.0.0) (2022-10-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* vote response API changes
+
+### Features
+
+* empty vec for known votes ([#29](https://github.com/maidsafe/sn_sdkg/issues/29)) ([69200f5](https://github.com/maidsafe/sn_sdkg/commit/69200f59440a0644e02d179bcdde3f63ac7ef4d5))
+
 ## [2.0.0](https://github.com/maidsafe/sn_sdkg/compare/v1.1.2...v2.0.0) (2022-10-04)
 
 
