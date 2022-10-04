@@ -269,7 +269,7 @@ impl DkgState {
     pub fn handle_signed_vote<R: bls::rand::RngCore>(
         &mut self,
         msg: DkgSignedVote,
-        mut rng: R,
+        rng: &mut R,
     ) -> Result<Vec<VoteResponse>> {
         // if already seen it, ignore it
         if self.all_votes.contains(&msg) {
@@ -306,7 +306,7 @@ impl DkgState {
                 Ok(res)
             }
             DkgCurrentState::GotAllParts(parts) => {
-                let vote = self.parts_into_acks(parts, &mut rng)?;
+                let vote = self.parts_into_acks(parts, rng)?;
                 let signed_vote = self.signed_vote(vote)?;
                 let mut res = vec![VoteResponse::BroadcastVote(Box::new(signed_vote.clone()))];
                 let our_vote_res = self.handle_signed_vote(signed_vote, rng)?;
@@ -352,5 +352,6 @@ mod tests {
         assert!(matches!(res[0], VoteResponse::BroadcastVote(_)));
         assert!(matches!(res[1], VoteResponse::BroadcastVote(_)));
         assert!(matches!(res[2], VoteResponse::DkgComplete(_, _)));
+        assert_eq!(res.len(), 3);
     }
 }

@@ -690,7 +690,7 @@ mod tests {
 
     #[test]
     fn test_threshold() {
-        for nodes_num in 2..7 {
+        for nodes_num in 2..=7 {
             // for threshold in 1..((nodes_num-1)/2+1) {
             for threshold in 1..nodes_num {
                 println!("Testing for threshold {}/{}...", threshold, nodes_num);
