@@ -210,11 +210,14 @@ impl DkgState {
     fn parts_into_acks<R: bls::rand::RngCore>(
         &mut self,
         parts: BTreeSet<IdPart>,
-        rng: &mut R,
+        mut rng: R,
     ) -> Result<DkgVote> {
         let mut acks = BTreeMap::new();
         for (sender_id, part) in parts {
-            match self.keygen.handle_part(&sender_id, part.clone(), rng)? {
+            match self
+                .keygen
+                .handle_part(&sender_id, part.clone(), &mut rng)?
+            {
                 PartOutcome::Valid(Some(ack)) => {
                     acks.insert((sender_id, part), ack);
                 }
@@ -269,7 +272,7 @@ impl DkgState {
     pub fn handle_signed_vote<R: bls::rand::RngCore>(
         &mut self,
         msg: DkgSignedVote,
-        rng: &mut R,
+        mut rng: R,
     ) -> Result<Vec<VoteResponse>> {
         // if already seen it, ignore it
         if self.all_votes.contains(&msg) {
@@ -302,15 +305,19 @@ impl DkgState {
                 let signed_vote = self.signed_vote(vote)?;
                 let mut res = vec![VoteResponse::BroadcastVote(Box::new(signed_vote.clone()))];
                 let our_vote_res = self.handle_signed_vote(signed_vote, rng)?;
-                res.extend(our_vote_res);
+                if !matches!(our_vote_res.as_slice(), [VoteResponse::WaitingForMoreVotes]) {
+                    res.extend(our_vote_res);
+                }
                 Ok(res)
             }
             DkgCurrentState::GotAllParts(parts) => {
-                let vote = self.parts_into_acks(parts, rng)?;
+                let vote = self.parts_into_acks(parts, &mut rng)?;
                 let signed_vote = self.signed_vote(vote)?;
                 let mut res = vec![VoteResponse::BroadcastVote(Box::new(signed_vote.clone()))];
                 let our_vote_res = self.handle_signed_vote(signed_vote, rng)?;
-                res.extend(our_vote_res);
+                if !matches!(our_vote_res.as_slice(), [VoteResponse::WaitingForMoreVotes]) {
+                    res.extend(our_vote_res);
+                }
                 Ok(res)
             }
             DkgCurrentState::WaitingForMoreParts
