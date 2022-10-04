@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [2.0.0](https://github.com/maidsafe/sn_sdkg/compare/v1.1.2...v2.0.0) (2022-10-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* now returns a vec of vote responses instead of one
+
+* chore: small improvements
+
+* chore: more improvements
+
+* Recursive vote handling (#27) ([ffe3ff7](https://github.com/maidsafe/sn_sdkg/commit/ffe3ff7a011a2dbe2eb3b2c6dd357e4b0e111e2c)), closes [#27](https://github.com/maidsafe/sn_sdkg/issues/27)
+
 ### [1.1.2](https://github.com/maidsafe/sn_sdkg/compare/v1.1.1...v1.1.2) (2022-09-29)
 
 
