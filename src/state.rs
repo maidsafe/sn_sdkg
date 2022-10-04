@@ -305,9 +305,11 @@ impl DkgState {
                 let signed_vote = self.signed_vote(vote)?;
                 let mut res = vec![VoteResponse::BroadcastVote(Box::new(signed_vote.clone()))];
                 let our_vote_res = self.handle_signed_vote(signed_vote, rng)?;
-                if !matches!(our_vote_res.as_slice(), [VoteResponse::WaitingForMoreVotes]) {
-                    res.extend(our_vote_res);
-                }
+                res.extend(
+                    our_vote_res
+                        .into_iter()
+                        .filter(|r| !matches!(r, VoteResponse::WaitingForMoreVotes)),
+                );
                 Ok(res)
             }
             DkgCurrentState::GotAllParts(parts) => {
@@ -315,9 +317,11 @@ impl DkgState {
                 let signed_vote = self.signed_vote(vote)?;
                 let mut res = vec![VoteResponse::BroadcastVote(Box::new(signed_vote.clone()))];
                 let our_vote_res = self.handle_signed_vote(signed_vote, rng)?;
-                if !matches!(our_vote_res.as_slice(), [VoteResponse::WaitingForMoreVotes]) {
-                    res.extend(our_vote_res);
-                }
+                res.extend(
+                    our_vote_res
+                        .into_iter()
+                        .filter(|r| !matches!(r, VoteResponse::WaitingForMoreVotes)),
+                );
                 Ok(res)
             }
             DkgCurrentState::WaitingForMoreParts
