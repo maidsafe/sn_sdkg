@@ -128,24 +128,30 @@ impl Net {
             "[NET] vote {:?} resp from {}: {:?}",
             packet.vote, packet.dest, resp
         );
-        match resp {
-            Ok(VoteResponse::WaitingForMoreVotes) => {}
-            Ok(VoteResponse::IgnoringKnownVote) => {}
-            Ok(VoteResponse::BroadcastVote(vote)) => {
-                let dest_actor = packet.dest;
-                self.broadcast(dest_actor, *vote);
-            }
-            Ok(VoteResponse::RequestAntiEntropy) => {
-                // AE TODO
-            }
-            Ok(VoteResponse::DkgComplete(_pub_keys, _sec_key)) => {
-                info!("[NET] DkgComplete for {:?}", packet.dest);
-                // Termination TODO
-            }
+        let res = match resp {
+            Ok(res) => res,
             Err(Error::UnknownSender) => {
                 assert!(self.procs.len() as u8 <= packet.source);
+                vec![]
             }
             Err(err) => return Err(err),
+        };
+        for r in res {
+            match r {
+                VoteResponse::WaitingForMoreVotes => {}
+                VoteResponse::IgnoringKnownVote => {}
+                VoteResponse::BroadcastVote(vote) => {
+                    let dest_actor = packet.dest;
+                    self.broadcast(dest_actor, *vote);
+                }
+                VoteResponse::RequestAntiEntropy => {
+                    // AE TODO
+                }
+                VoteResponse::DkgComplete(_pub_keys, _sec_key) => {
+                    info!("[NET] DkgComplete for {:?}", packet.dest);
+                    // Termination TODO
+                }
+            }
         }
         Ok(())
     }

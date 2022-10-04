@@ -84,10 +84,12 @@ impl DkgState {
         self.id
     }
 
-    /// The 1st vote with our Part
+    /// Return the 1st vote with our Part and save it in our knowledge
     pub fn first_vote(&mut self) -> Result<DkgSignedVote> {
         let vote = DkgVote::SinglePart(self.our_part.clone());
-        self.cast_vote(vote)
+        let signed_vote = self.signed_vote(vote)?;
+        self.all_votes.insert(signed_vote.clone());
+        Ok(signed_vote)
     }
 
     fn get_validated_vote(&self, vote: &DkgSignedVote) -> Result<DkgVote> {
@@ -148,14 +150,13 @@ impl DkgState {
         &self,
         votes: Vec<(DkgVote, NodeId)>,
         vote: &DkgVote,
-        is_new: bool,
     ) -> DkgCurrentState {
         let dkg_state = self.current_dkg_state(votes);
         match dkg_state {
             // This case happens when we receive the last Part but we already received
             // someone's acks before, making us skip GotAllParts as we already have an Ack
             DkgCurrentState::WaitingForMoreAcks(parts)
-                if is_new && matches!(vote, DkgVote::SinglePart(_)) =>
+                if matches!(vote, DkgVote::SinglePart(_)) =>
             {
                 DkgCurrentState::GotAllParts(parts)
             }
@@ -183,11 +184,10 @@ impl DkgState {
         Ok(sig)
     }
 
-    /// Sign, log and return the vote
-    fn cast_vote(&mut self, vote: DkgVote) -> Result<DkgSignedVote> {
+    /// Sign and return the vote
+    fn signed_vote(&mut self, vote: DkgVote) -> Result<DkgSignedVote> {
         let sig = self.sign_vote(&vote)?;
         let signed_vote = DkgSignedVote::new(vote, self.id, sig);
-        self.all_votes.insert(signed_vote.clone());
         Ok(signed_vote)
     }
 
@@ -272,48 +272,93 @@ impl DkgState {
     pub fn handle_signed_vote<R: bls::rand::RngCore>(
         &mut self,
         msg: DkgSignedVote,
-        rng: R,
-    ) -> Result<VoteResponse> {
+        mut rng: R,
+    ) -> Result<Vec<VoteResponse>> {
         // if already seen it, ignore it
         if self.all_votes.contains(&msg) {
-            return Ok(VoteResponse::IgnoringKnownVote);
+            return Ok(vec![VoteResponse::IgnoringKnownVote]);
         }
 
         // immediately bail if signature check fails
         let last_vote = self.get_validated_vote(&msg)?;
 
         // update knowledge with vote
-        let is_new_vote = self.all_votes.insert(msg);
+        let _ = self.all_votes.insert(msg);
         let votes = self.all_checked_votes()?;
-        let dkg_state = self.dkg_state_with_vote(votes, &last_vote, is_new_vote);
+        let dkg_state = self.dkg_state_with_vote(votes, &last_vote);
 
         // act accordingly
         match dkg_state {
             DkgCurrentState::MissingParts | DkgCurrentState::MissingAcks => {
-                Ok(VoteResponse::RequestAntiEntropy)
+                Ok(vec![VoteResponse::RequestAntiEntropy])
             }
             DkgCurrentState::Termination(acks) => {
                 self.handle_all_acks(acks)?;
                 if let (pubs, Some(sec)) = self.keygen.generate()? {
-                    Ok(VoteResponse::DkgComplete(pubs, sec))
+                    Ok(vec![VoteResponse::DkgComplete(pubs, sec)])
                 } else {
                     Err(Error::FailedToGenerateSecretKeyShare)
                 }
             }
             DkgCurrentState::GotAllAcks(acks) => {
                 let vote = DkgVote::AllAcks(acks);
-                Ok(VoteResponse::BroadcastVote(Box::new(self.cast_vote(vote)?)))
+                let signed_vote = self.signed_vote(vote)?;
+                let mut res = vec![VoteResponse::BroadcastVote(Box::new(signed_vote.clone()))];
+                let our_vote_res = self.handle_signed_vote(signed_vote, rng)?;
+                if !matches!(our_vote_res.as_slice(), [VoteResponse::WaitingForMoreVotes]) {
+                    res.extend(our_vote_res);
+                }
+                Ok(res)
             }
             DkgCurrentState::GotAllParts(parts) => {
-                let vote = self.parts_into_acks(parts, rng)?;
-                Ok(VoteResponse::BroadcastVote(Box::new(self.cast_vote(vote)?)))
+                let vote = self.parts_into_acks(parts, &mut rng)?;
+                let signed_vote = self.signed_vote(vote)?;
+                let mut res = vec![VoteResponse::BroadcastVote(Box::new(signed_vote.clone()))];
+                let our_vote_res = self.handle_signed_vote(signed_vote, rng)?;
+                if !matches!(our_vote_res.as_slice(), [VoteResponse::WaitingForMoreVotes]) {
+                    res.extend(our_vote_res);
+                }
+                Ok(res)
             }
             DkgCurrentState::WaitingForMoreParts
             | DkgCurrentState::WaitingForMoreAcks(_)
-            | DkgCurrentState::WaitingForTotalAgreement(_) => Ok(VoteResponse::WaitingForMoreVotes),
+            | DkgCurrentState::WaitingForTotalAgreement(_) => {
+                Ok(vec![VoteResponse::WaitingForMoreVotes])
+            }
             DkgCurrentState::IncompatibleVotes => {
                 Err(Error::FaultyVote("got incompatible votes".to_string()))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_recursive_handle_vote() {
+        let mut rng = bls::rand::rngs::OsRng;
+        let sec_key0: SecretKey = bls::rand::random();
+        let pub_keys: BTreeMap<u8, PublicKey> = BTreeMap::from([(0, sec_key0.public_key())]);
+
+        let threshold = 1;
+        let mut dkg_state0 = DkgState::new(0, sec_key0, pub_keys, threshold, &mut rng)
+            .expect("Failed to create DKG state");
+
+        // Get the first votes: Parts
+        let part0 = dkg_state0.first_vote().expect("Failed to get first vote");
+
+        // Remove our own vote from knowledge
+        dkg_state0.all_votes = BTreeSet::new();
+
+        // Handle our own vote and recursively reach termination
+        let res = dkg_state0
+            .handle_signed_vote(part0, &mut rng)
+            .expect("failed to handle vote");
+        assert!(matches!(res[0], VoteResponse::BroadcastVote(_)));
+        assert!(matches!(res[1], VoteResponse::BroadcastVote(_)));
+        assert!(matches!(res[2], VoteResponse::DkgComplete(_, _)));
+        assert_eq!(res.len(), 3);
     }
 }

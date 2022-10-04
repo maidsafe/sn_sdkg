@@ -74,97 +74,92 @@ mod tests {
         // No need to handle our own vote
         // Participant 0 handles Parts
         // We already know this vote (it's ours), just checking that it gives IgnoringKnownVote
+        let res = &dkg_state0.handle_signed_vote(part0.clone(), &mut rng);
         assert!(matches!(
-            dkg_state0.handle_signed_vote(part0.clone(), &mut rng),
-            Ok(VoteResponse::IgnoringKnownVote)
+            res.as_deref(),
+            Ok([VoteResponse::IgnoringKnownVote])
         ));
+        let res = &dkg_state0.handle_signed_vote(part1.clone(), &mut rng);
         assert!(matches!(
-            dkg_state0.handle_signed_vote(part1.clone(), &mut rng),
-            Ok(VoteResponse::WaitingForMoreVotes)
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
         ));
-        let acks0 = assert_match!(
-           dkg_state0.handle_signed_vote(part2.clone(), &mut rng),
-           Ok(VoteResponse::BroadcastVote(acks)) => *acks
-        );
+        let res = &dkg_state0.handle_signed_vote(part2.clone(), &mut rng);
+        let acks0 =
+            assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(acks)]) => *acks.clone());
         // Participant 1 handles Parts
+        let res = &dkg_state1.handle_signed_vote(part0.clone(), &mut rng);
         assert!(matches!(
-            dkg_state1.handle_signed_vote(part0.clone(), &mut rng),
-            Ok(VoteResponse::WaitingForMoreVotes)
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
         ));
-        let acks1 = assert_match!(
-            dkg_state1.handle_signed_vote(part2, &mut rng),
-            Ok(VoteResponse::BroadcastVote(acks)) => *acks
-        );
+        let res = &dkg_state1.handle_signed_vote(part2, &mut rng);
+        let acks1 =
+            assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(acks)]) => *acks.clone());
         // Participant 2 handles Parts
+        let res = &dkg_state2.handle_signed_vote(part0, &mut rng);
         assert!(matches!(
-            dkg_state2.handle_signed_vote(part0, &mut rng),
-            Ok(VoteResponse::WaitingForMoreVotes)
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
         ));
-        let acks2 = assert_match!(
-            dkg_state2.handle_signed_vote(part1, &mut rng),
-            Ok(VoteResponse::BroadcastVote(acks)) => *acks
-        );
+        let res = &dkg_state2.handle_signed_vote(part1, &mut rng);
+        let acks2 =
+            assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(acks)]) => *acks.clone());
 
         // Now that every participant handled the Parts and submitted their Acks, we handle the Acks
         // Participant 0 handles Acks
+        let res = &dkg_state0.handle_signed_vote(acks1.clone(), &mut rng);
         assert!(matches!(
-            dkg_state0.handle_signed_vote(acks1.clone(), &mut rng),
-            Ok(VoteResponse::WaitingForMoreVotes)
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
         ));
-        let all_acks0 = assert_match!(
-           dkg_state0.handle_signed_vote(acks2.clone(), &mut rng),
-           Ok(VoteResponse::BroadcastVote(all_acks)) => *all_acks
-        );
+        let res = &dkg_state0.handle_signed_vote(acks2.clone(), &mut rng);
+        let all_acks0 = assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(all_acks)]) => *all_acks.clone());
         // Participant 1 handles Acks
+        let res = &dkg_state1.handle_signed_vote(acks0.clone(), &mut rng);
         assert!(matches!(
-            dkg_state1.handle_signed_vote(acks0.clone(), &mut rng),
-            Ok(VoteResponse::WaitingForMoreVotes)
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
         ));
-        let all_acks1 = assert_match!(
-            dkg_state1.handle_signed_vote(acks2, &mut rng),
-            Ok(VoteResponse::BroadcastVote(all_acks)) => *all_acks
-        );
+        let res = &dkg_state1.handle_signed_vote(acks2, &mut rng);
+        let all_acks1 = assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(all_acks)]) => *all_acks.clone());
         // Participant 2 handles Acks
+        let res = &dkg_state2.handle_signed_vote(acks0, &mut rng);
         assert!(matches!(
-            dkg_state2.handle_signed_vote(acks0, &mut rng),
-            Ok(VoteResponse::WaitingForMoreVotes)
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
         ));
-        let all_acks2 = assert_match!(
-            dkg_state2.handle_signed_vote(acks1, &mut rng),
-            Ok(VoteResponse::BroadcastVote(all_acks)) => *all_acks
-        );
+        let res = &dkg_state2.handle_signed_vote(acks1, &mut rng);
+        let all_acks2 = assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(all_acks)]) => *all_acks.clone());
 
         // Now that we have all the Acks, we check that everyone has the same set
         // Handle the set of all acks to check everyone agreed on the same set
         // Participant 0 handles AllAcks
+        let res = &dkg_state0.handle_signed_vote(all_acks1.clone(), &mut rng);
         assert!(matches!(
-            dkg_state0.handle_signed_vote(all_acks1.clone(), &mut rng),
-            Ok(VoteResponse::WaitingForMoreVotes)
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
         ));
-        let (pubs0, sec0) = assert_match!(
-           dkg_state0.handle_signed_vote(all_acks2.clone(), &mut rng),
-           Ok(VoteResponse::DkgComplete(pubs0, sec0)) => (pubs0, sec0)
-        );
+        let res = &dkg_state0.handle_signed_vote(all_acks2.clone(), &mut rng);
+        let (pubs0, sec0) = assert_match!(res.as_deref(), Ok([VoteResponse::DkgComplete(pubs0, sec0)]) => (pubs0, sec0));
 
         // Participant 1 handles AllAcks
+        let res = &dkg_state1.handle_signed_vote(all_acks0.clone(), &mut rng);
         assert!(matches!(
-            dkg_state1.handle_signed_vote(all_acks0.clone(), &mut rng),
-            Ok(VoteResponse::WaitingForMoreVotes)
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
         ));
-        let (pubs1, sec1) = assert_match!(
-            dkg_state1.handle_signed_vote(all_acks2, &mut rng),
-            Ok(VoteResponse::DkgComplete(pubs1, sec1)) => (pubs1, sec1)
-        );
+        let res = &dkg_state1.handle_signed_vote(all_acks2, &mut rng);
+        let (pubs1, sec1) = assert_match!(res.as_deref(), Ok([VoteResponse::DkgComplete(pubs1, sec1)]) => (pubs1, sec1));
 
         // Participant 2 handles AllAcks
+        let res = &dkg_state2.handle_signed_vote(all_acks0, &mut rng);
         assert!(matches!(
-            dkg_state2.handle_signed_vote(all_acks0, &mut rng),
-            Ok(VoteResponse::WaitingForMoreVotes)
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
         ));
-        let (pubs2, sec2) = assert_match!(
-            dkg_state2.handle_signed_vote(all_acks1, &mut rng),
-            Ok(VoteResponse::DkgComplete(pubs2, sec2)) => (pubs2, sec2)
-        );
+        let res = &dkg_state2.handle_signed_vote(all_acks1, &mut rng);
+        let (pubs2, sec2) = assert_match!(res.as_deref(), Ok([VoteResponse::DkgComplete(pubs2, sec2)]) => (pubs2, sec2));
 
         // The pubkey sets should be identical
         assert_eq!(pubs0, pubs1);
