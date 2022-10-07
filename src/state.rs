@@ -338,9 +338,12 @@ impl DkgState {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use crate::{sdkg::tests::verify_threshold, vote::test_utils::*};
     use bls::rand::{rngs::StdRng, seq::IteratorRandom, thread_rng, Rng, RngCore, SeedableRng};
+    use eyre::{eyre, Result};
+    use std::env;
 
     #[test]
     fn test_recursive_handle_vote() {
@@ -370,7 +373,11 @@ mod tests {
 
     #[test]
     fn fuzz_test() -> Result<()> {
-        let mut fuzz_count = 20;
+        let mut fuzz_count = if let Ok(count) = env::var("FUZZ_TEST_COUNT") {
+            count.parse::<isize>().map_err(|err| eyre!("{err}"))?
+        } else {
+            20
+        };
         let mut rng_for_seed = thread_rng();
         let num_nodes = 7;
         let threshold = 4;
@@ -393,64 +400,28 @@ mod tests {
 
             for cmd in fuzz_commands(num_nodes, seed) {
                 // println!("==> {cmd:?}");
-                match cmd {
-                    SendVote::Parts(from_node, to_nodes) => {
-                        for (to, expt_resp) in to_nodes {
-                            let actual_resp = nodes[to]
-                                .handle_signed_vote(parts[&from_node].clone(), &mut rng)?;
-                            assert_eq!(expt_resp.len(), actual_resp.len());
-                            expt_resp.into_iter().zip(actual_resp.into_iter()).for_each(
-                                |(exp, actual)| {
-                                    assert!(exp.match_resp(
-                                        actual,
-                                        &mut acks,
-                                        &mut all_acks,
-                                        &mut sk_shares,
-                                        &mut pk_set,
-                                        to
-                                    ));
-                                },
-                            )
-                        }
-                    }
-                    SendVote::Acks(from_node, to_nodes) => {
-                        for (to, expt_resp) in to_nodes {
-                            let actual_resp =
-                                nodes[to].handle_signed_vote(acks[&from_node].clone(), &mut rng)?;
-                            assert_eq!(expt_resp.len(), actual_resp.len());
-                            expt_resp.into_iter().zip(actual_resp.into_iter()).for_each(
-                                |(exp, actual)| {
-                                    assert!(exp.match_resp(
-                                        actual,
-                                        &mut acks,
-                                        &mut all_acks,
-                                        &mut sk_shares,
-                                        &mut pk_set,
-                                        to
-                                    ));
-                                },
-                            )
-                        }
-                    }
-                    SendVote::AllAcks(from_node, to_nodes) => {
-                        for (to, expt_resp) in to_nodes {
-                            let actual_resp = nodes[to]
-                                .handle_signed_vote(all_acks[&from_node].clone(), &mut rng)?;
-                            assert_eq!(expt_resp.len(), actual_resp.len());
-                            expt_resp.into_iter().zip(actual_resp.into_iter()).for_each(
-                                |(exp, actual)| {
-                                    assert!(exp.match_resp(
-                                        actual,
-                                        &mut acks,
-                                        &mut all_acks,
-                                        &mut sk_shares,
-                                        &mut pk_set,
-                                        to
-                                    ));
-                                },
-                            )
-                        }
-                    }
+                let (to_nodes, vote) = match cmd {
+                    SendVote::Parts(from, to_nodes) => (to_nodes, parts[&from].clone()),
+                    SendVote::Acks(from, to_nodes) => (to_nodes, acks[&from].clone()),
+                    SendVote::AllAcks(from, to_nodes) => (to_nodes, all_acks[&from].clone()),
+                };
+                // send the vote to each `to` node
+                for (to, expt_resp) in to_nodes {
+                    let actual_resp = nodes[to].handle_signed_vote(vote.clone(), &mut rng)?;
+                    assert_eq!(expt_resp.len(), actual_resp.len());
+                    expt_resp
+                        .into_iter()
+                        .zip(actual_resp.into_iter())
+                        .for_each(|(exp, actual)| {
+                            assert!(exp.match_resp(
+                                actual,
+                                &mut acks,
+                                &mut all_acks,
+                                &mut sk_shares,
+                                &mut pk_set,
+                                to
+                            ));
+                        })
                 }
             }
 
@@ -470,7 +441,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(seed);
         let mut nodes = MockNode::new(num_nodes);
         // probability for a node to resend vote to another node which has already handled it.
-        let resend_probability = Some((1, 10));
+        let resend_probability = Some((1, 5));
         // these nodes are required to help other nodes terminate
         let mut active_nodes = MockNode::active_nodes(&nodes);
         let mut commands = Vec::new();
@@ -490,123 +461,132 @@ mod tests {
                 continue;
             }
 
+            let mut done = false;
             // randomly send out part/acks/all_acks
-            match rng.gen::<usize>() % 3 {
-                0 if !parts.is_empty() => {
-                    let to_nodes = MockNode::sample_nodes(&parts, &mut rng);
+            while !done {
+                match rng.gen::<usize>() % 3 {
+                    0 if !parts.is_empty() => {
+                        let to_nodes = MockNode::sample_nodes(&parts, &mut rng);
 
-                    // update each `to` node and get its (id, response)
-                    let to_nodes_resp = to_nodes
-                        .into_iter()
-                        .map(|to| {
-                            let mut resp = Vec::new();
-                            // skip if already handled
-                            if let Some(val) = nodes[to].handled_parts.get(&current_node) {
-                                if *val {
-                                    return (to, resp);
+                        // update each `to` node and get its (id, response)
+                        let to_nodes_resp = to_nodes
+                            .into_iter()
+                            .map(|to| {
+                                let mut resp = Vec::new();
+                                // skip if already handled
+                                if let Some(val) = nodes[to].handled_parts.get(&current_node) {
+                                    if *val {
+                                        return (to, resp);
+                                    }
                                 }
-                            }
 
-                            if let Some(val) = nodes[to].handled_parts.insert(current_node, true) {
-                                if nodes[to].parts_done() {
-                                    resp.push(MockVoteResponse::BroadcastVote(
-                                        MockDkgVote::SingleAck,
-                                    ));
-                                    // if we have handled the all the `Acks` before the parts
+                                if let Some(val) =
+                                    nodes[to].handled_parts.insert(current_node, true)
+                                {
+                                    if nodes[to].parts_done() {
+                                        resp.push(MockVoteResponse::BroadcastVote(
+                                            MockDkgVote::SingleAck,
+                                        ));
+                                        // if we have handled the all the `Acks` before the parts
+                                        if nodes[to].acks_done() {
+                                            resp.push(MockVoteResponse::BroadcastVote(
+                                                MockDkgVote::AllAcks,
+                                            ));
+                                        }
+                                    } else {
+                                        // if false, we need more votes
+                                        if !val {
+                                            resp.push(MockVoteResponse::WaitingForMoreVotes)
+                                        }
+                                    }
+                                }
+
+                                (to, resp)
+                            })
+                            .collect();
+
+                        commands.push(SendVote::Parts(current_node, to_nodes_resp));
+                        done = true;
+                    }
+                    1 if !acks.is_empty() => {
+                        let to_nodes = MockNode::sample_nodes(&acks, &mut rng);
+
+                        let to_nodes_resp = to_nodes
+                            .into_iter()
+                            .map(|to| {
+                                let mut resp = Vec::new();
+                                // skip if already handled
+                                if let Some(val) = nodes[to].handled_acks.get(&current_node) {
+                                    if *val {
+                                        return (to, resp);
+                                    }
+                                }
+                                let res = nodes[to].handled_acks.insert(current_node, true);
+                                // if our parts are not done, we will not understand this vote
+                                if !nodes[to].parts_done() {
+                                    resp.push(MockVoteResponse::RequestAntiEntropy)
+                                } else if let Some(val) = res {
                                     if nodes[to].acks_done() {
                                         resp.push(MockVoteResponse::BroadcastVote(
                                             MockDkgVote::AllAcks,
                                         ));
+                                        // if we have handled the all the `AllAcks` before the Acks
+                                        if nodes[to].all_acks_done() {
+                                            resp.push(MockVoteResponse::DkgComplete);
+                                        }
+                                    } else {
+                                        // if false, we need more votes
+                                        if !val {
+                                            resp.push(MockVoteResponse::WaitingForMoreVotes)
+                                        }
                                     }
-                                } else {
-                                    // if false, we need more votes
-                                    if !val {
-                                        resp.push(MockVoteResponse::WaitingForMoreVotes)
+                                };
+
+                                (to, resp)
+                            })
+                            .collect();
+
+                        commands.push(SendVote::Acks(current_node, to_nodes_resp));
+                        done = true
+                    }
+                    2 if !all_acks.is_empty() => {
+                        let to_nodes = MockNode::sample_nodes(&all_acks, &mut rng);
+
+                        let to_nodes_resp = to_nodes
+                            .into_iter()
+                            .map(|to| {
+                                let mut resp = Vec::new();
+                                // skip if already handled
+                                if let Some(val) = nodes[to].handled_all_acks.get(&current_node) {
+                                    if *val {
+                                        return (to, resp);
                                     }
                                 }
-                            }
+                                let res = nodes[to].handled_all_acks.insert(current_node, true);
 
-                            (to, resp)
-                        })
-                        .collect();
-
-                    commands.push(SendVote::Parts(current_node, to_nodes_resp));
-                }
-                1 if !acks.is_empty() => {
-                    let to_nodes = MockNode::sample_nodes(&acks, &mut rng);
-
-                    let to_nodes_resp = to_nodes
-                        .into_iter()
-                        .map(|to| {
-                            let mut resp = Vec::new();
-                            // skip if already handled
-                            if let Some(val) = nodes[to].handled_acks.get(&current_node) {
-                                if *val {
-                                    return (to, resp);
-                                }
-                            }
-                            let res = nodes[to].handled_acks.insert(current_node, true);
-                            // if our parts are not done, we will not understand this vote
-                            if !nodes[to].parts_done() {
-                                resp.push(MockVoteResponse::RequestAntiEntropy)
-                            } else if let Some(val) = res {
-                                if nodes[to].acks_done() {
-                                    resp.push(MockVoteResponse::BroadcastVote(
-                                        MockDkgVote::AllAcks,
-                                    ));
-                                    // if we have handled the all the `AllAcks` before the Acks
+                                // if our Acks are not done, we will not understand this vote
+                                if !nodes[to].acks_done() {
+                                    resp.push(MockVoteResponse::RequestAntiEntropy);
+                                } else if let Some(val) = res {
                                     if nodes[to].all_acks_done() {
-                                        resp.push(MockVoteResponse::DkgComplete);
+                                        resp.push(MockVoteResponse::DkgComplete)
+                                    } else {
+                                        // if false, we need more votes
+                                        if !val {
+                                            resp.push(MockVoteResponse::WaitingForMoreVotes)
+                                        }
                                     }
-                                } else {
-                                    // if false, we need more votes
-                                    if !val {
-                                        resp.push(MockVoteResponse::WaitingForMoreVotes)
-                                    }
-                                }
-                            };
+                                };
+                                (to, resp)
+                            })
+                            .collect();
 
-                            (to, resp)
-                        })
-                        .collect();
-
-                    commands.push(SendVote::Acks(current_node, to_nodes_resp));
+                        commands.push(SendVote::AllAcks(current_node, to_nodes_resp));
+                        done = true;
+                    }
+                    // happens if the rng lands on a vote list (e.g., all_acks) that is empty
+                    _ => {}
                 }
-                2 if !all_acks.is_empty() => {
-                    let to_nodes = MockNode::sample_nodes(&all_acks, &mut rng);
-
-                    let to_nodes_resp = to_nodes
-                        .into_iter()
-                        .map(|to| {
-                            let mut resp = Vec::new();
-                            // skip if already handled
-                            if let Some(val) = nodes[to].handled_all_acks.get(&current_node) {
-                                if *val {
-                                    return (to, resp);
-                                }
-                            }
-                            let res = nodes[to].handled_all_acks.insert(current_node, true);
-
-                            // if our Acks are not done, we will not understand this vote
-                            if !nodes[to].acks_done() {
-                                resp.push(MockVoteResponse::RequestAntiEntropy);
-                            } else if let Some(val) = res {
-                                if nodes[to].all_acks_done() {
-                                    resp.push(MockVoteResponse::DkgComplete)
-                                } else {
-                                    // if false, we need more votes
-                                    if !val {
-                                        resp.push(MockVoteResponse::WaitingForMoreVotes)
-                                    }
-                                }
-                            };
-                            (to, resp)
-                        })
-                        .collect();
-
-                    commands.push(SendVote::AllAcks(current_node, to_nodes_resp));
-                }
-                _ => {}
             }
 
             active_nodes = MockNode::active_nodes(&nodes);
@@ -631,6 +611,7 @@ mod tests {
             .enumerate()
             .map(|(id, sk)| {
                 DkgState::new(id as u8, sk.clone(), pub_keys.clone(), threshold, &mut rng)
+                    .map_err(|err| eyre!("{err}"))
             })
             .collect()
     }
@@ -651,6 +632,37 @@ mod tests {
         DkgComplete,
     }
 
+    impl PartialEq<VoteResponse> for MockVoteResponse {
+        fn eq(&self, other: &VoteResponse) -> bool {
+            match self {
+                MockVoteResponse::WaitingForMoreVotes
+                    if matches!(other, VoteResponse::WaitingForMoreVotes) =>
+                {
+                    true
+                }
+                MockVoteResponse::BroadcastVote(mock_vote) => {
+                    if let VoteResponse::BroadcastVote(signed_vote) = other {
+                        *mock_vote == **signed_vote
+                    } else {
+                        false
+                    }
+                }
+
+                MockVoteResponse::RequestAntiEntropy
+                    if matches!(other, VoteResponse::RequestAntiEntropy) =>
+                {
+                    true
+                }
+                MockVoteResponse::DkgComplete
+                    if matches!(other, VoteResponse::DkgComplete(_, _)) =>
+                {
+                    true
+                }
+                _ => false,
+            }
+        }
+    }
+
     impl MockVoteResponse {
         pub fn match_resp(
             &self,
@@ -661,40 +673,21 @@ mod tests {
             update_pk: &mut BTreeSet<PublicKeySet>,
             id: usize,
         ) -> bool {
-            if (matches!(self, Self::WaitingForMoreVotes)
-                && matches!(actual_resp, VoteResponse::WaitingForMoreVotes))
-                || (matches!(self, Self::RequestAntiEntropy)
-                    && matches!(actual_resp, VoteResponse::RequestAntiEntropy))
-            {
-                true
-            } else if matches!(self, Self::BroadcastVote(MockDkgVote::SingleAck)) {
+            if *self == actual_resp {
                 match actual_resp {
-                    VoteResponse::BroadcastVote(vote)
-                        if matches!(vote.mock(), MockDkgVote::SingleAck) =>
-                    {
+                    VoteResponse::BroadcastVote(vote) if MockDkgVote::SingleAck == *vote => {
                         update_acks.insert(id, *vote);
-                        true
                     }
-                    _ => false,
-                }
-            } else if matches!(self, Self::BroadcastVote(MockDkgVote::AllAcks)) {
-                match actual_resp {
-                    VoteResponse::BroadcastVote(vote)
-                        if matches!(vote.mock(), MockDkgVote::AllAcks) =>
-                    {
+                    VoteResponse::BroadcastVote(vote) if MockDkgVote::AllAcks == *vote => {
                         update_all_acks.insert(id, *vote);
-                        true
                     }
-                    _ => false,
+                    VoteResponse::DkgComplete(pk, sk) => {
+                        update_pk.insert(pk);
+                        update_sk.insert(id, sk);
+                    }
+                    _ => {}
                 }
-            } else if matches!(self, Self::DkgComplete) {
-                if let VoteResponse::DkgComplete(pk, sk) = actual_resp {
-                    update_pk.insert(pk);
-                    update_sk.insert(id, sk);
-                    true
-                } else {
-                    false
-                }
+                true
             } else {
                 false
             }
@@ -799,7 +792,7 @@ mod tests {
             resend_probability: Option<(u32, u32)>,
             rng: &mut R,
         ) -> Vec<usize> {
-            // self should've handled all the acks/parts (except self's)
+            // // self should've handled all the acks/parts (except self's)
             if !self.parts_done() {
                 return Vec::new();
             }
