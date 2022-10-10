@@ -1,6 +1,6 @@
 [package]
 name = "sn_sdkg"
-version = "3.0.0"
+version = "3.0.1"
 edition = "2021"
 description = "Safe Network Synchronous Distributed Key Generation: enables dealerless section key generation"
 categories = ["algorithms", "asynchronous", "cryptography", "network-programming"]
