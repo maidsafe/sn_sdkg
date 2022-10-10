@@ -75,3 +75,27 @@ impl DkgSignedVote {
         matches!(self.vote, DkgVote::AllAcks(_))
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_utils {
+    use super::{DkgSignedVote, DkgVote};
+
+    #[allow(dead_code)]
+    #[derive(Debug)]
+    pub(crate) enum MockDkgVote {
+        SinglePart,
+        SingleAck,
+        AllAcks,
+    }
+
+    impl PartialEq<DkgSignedVote> for MockDkgVote {
+        fn eq(&self, other: &DkgSignedVote) -> bool {
+            match self {
+                MockDkgVote::SinglePart if matches!(other.vote, DkgVote::SinglePart(_)) => true,
+                MockDkgVote::SingleAck if matches!(other.vote, DkgVote::SingleAck(_)) => true,
+                MockDkgVote::AllAcks if matches!(other.vote, DkgVote::AllAcks(_)) => true,
+                _ => false,
+            }
+        }
+    }
+}
