@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [3.1.0](https://github.com/maidsafe/sn_sdkg/compare/v3.0.1...v3.1.0) (2022-10-12)
+
+
+### Features
+
+* reached termination cache ([#33](https://github.com/maidsafe/sn_sdkg/issues/33)) ([415a91e](https://github.com/maidsafe/sn_sdkg/commit/415a91e5c555dfdda9cf367839a7f76889a2e069))
+
 ### [3.0.1](https://github.com/maidsafe/sn_sdkg/compare/v3.0.0...v3.0.1) (2022-10-10)
 
 ## [3.0.0](https://github.com/maidsafe/sn_sdkg/compare/v2.0.0...v3.0.0) (2022-10-04)
