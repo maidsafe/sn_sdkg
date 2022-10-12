@@ -23,6 +23,7 @@ pub struct DkgState {
     keygen: SyncKeyGen<NodeId>,
     our_part: Part,
     all_votes: BTreeSet<DkgSignedVote>,
+    reached_termination: bool,
 }
 
 /// State after handling a vote
@@ -74,6 +75,7 @@ impl DkgState {
             keygen: sync_key_gen,
             all_votes: BTreeSet::new(),
             our_part: opt_part.ok_or(Error::NotInPubKeySet)?,
+            reached_termination: false,
         })
     }
 
@@ -258,9 +260,7 @@ impl DkgState {
 
     /// Checks if we reached termination
     pub fn reached_termination(&self) -> Result<bool> {
-        let votes = self.all_checked_votes()?;
-        let state = self.current_dkg_state(votes);
-        Ok(matches!(state, DkgCurrentState::Termination(_)))
+        Ok(self.reached_termination)
     }
 
     /// Handle a DKG vote, save the information if we learned any, broadcast:
@@ -295,6 +295,7 @@ impl DkgState {
             DkgCurrentState::Termination(acks) => {
                 self.handle_all_acks(acks)?;
                 if let (pubs, Some(sec)) = self.keygen.generate()? {
+                    self.reached_termination = true;
                     Ok(vec![VoteResponse::DkgComplete(pubs, sec)])
                 } else {
                     Err(Error::FailedToGenerateSecretKeyShare)
