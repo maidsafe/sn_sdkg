@@ -180,7 +180,7 @@ impl DkgState {
     }
 
     pub fn sign_vote(&self, vote: &DkgVote) -> Result<Signature> {
-        let sig = self.secret_key.sign(&bincode::serialize(vote)?);
+        let sig = self.secret_key.sign(bincode::serialize(vote)?);
         Ok(sig)
     }
 

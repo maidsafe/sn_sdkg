@@ -452,7 +452,9 @@ impl<N: NodeIdT> SyncKeyGen<N> {
         let val = bincode::deserialize::<FieldWrap<Fr>>(&ser_val)
             .map_err(|_| AckFault::DeserializeValue)?
             .into_inner();
-        if part.commit.evaluate(our_idx + 1, sender_idx + 1) != G1Affine::generator().mul(val) {
+        if part.commit.evaluate(our_idx + 1, sender_idx + 1)
+            != G1Affine::generator().mul(val).into()
+        {
             return Err(AckFault::ValueCommitment);
         }
         part.values.insert(sender_idx + 1, val);
