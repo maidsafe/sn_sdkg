@@ -65,7 +65,7 @@ impl Net {
     /// Pick a random public key from the set of procs
     // #[allow(dead_code)]
     pub fn pick_id(&self, rng: &mut StdRng) -> NodeId {
-        rng.gen_range(0, self.procs.len()) as NodeId
+        rng.gen_range(0..self.procs.len()) as NodeId
     }
 
     pub fn bad_vote(&self, sender: NodeId) -> DkgSignedVote {
