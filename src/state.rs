@@ -258,6 +258,27 @@ impl DkgState {
         }
     }
 
+    /// Before termination, force generation of keypair if we already have all acks
+    /// Effectively skipping the AllAcks/total agreement voting process
+    /// If successful, sets reached_termination as true to prevent further gossip
+    pub fn force_termination(&mut self) -> Result<Option<(PublicKeySet, SecretKeyShare)>> {
+        let votes = self.all_checked_votes()?;
+        match self.current_dkg_state(votes) {
+            DkgCurrentState::Termination(acks)
+            | DkgCurrentState::WaitingForTotalAgreement(acks)
+            | DkgCurrentState::GotAllAcks(acks) => {
+                self.handle_all_acks(acks)?;
+                self.reached_termination = true;
+                if let (pubs, Some(sec)) = self.keygen.generate()? {
+                    Ok(Some((pubs, sec)))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Err(Error::FailedForceGenerationBecauseMissingAcks),
+        }
+    }
+
     /// Checks if we reached termination
     pub fn reached_termination(&self) -> Result<bool> {
         Ok(self.reached_termination)
@@ -341,10 +362,144 @@ impl DkgState {
 mod tests {
 
     use super::*;
-    use crate::{sdkg::tests::verify_threshold, vote::test_utils::*};
-    use bls::rand::{rngs::StdRng, seq::IteratorRandom, thread_rng, Rng, RngCore, SeedableRng};
+    use crate::{assert_match, sdkg::tests::verify_threshold, vote::test_utils::*};
+    use bls::{
+        rand::{rngs::StdRng, seq::IteratorRandom, thread_rng, Rng, RngCore, SeedableRng},
+        SignatureShare,
+    };
     use eyre::{eyre, Result};
     use std::env;
+
+    #[test]
+    fn test_force_termination() {
+        let mut rng = bls::rand::rngs::OsRng;
+
+        // Generate individual key pairs for encryption. These are not suitable for threshold schemes.
+        let sec_key0: SecretKey = bls::rand::random();
+        let sec_key1: SecretKey = bls::rand::random();
+        let sec_key2: SecretKey = bls::rand::random();
+
+        let pub_keys: BTreeMap<u8, PublicKey> = BTreeMap::from([
+            (0, sec_key0.public_key()),
+            (1, sec_key1.public_key()),
+            (2, sec_key2.public_key()),
+        ]);
+
+        // Create a DkgState for each participants
+        let threshold = 1;
+        let mut dkg_state0 = DkgState::new(0, sec_key0, pub_keys.clone(), threshold, &mut rng)
+            .expect("Failed to create DKG state");
+        let mut dkg_state1 = DkgState::new(1, sec_key1, pub_keys.clone(), threshold, &mut rng)
+            .expect("Failed to create DKG state");
+        let mut dkg_state2 = DkgState::new(2, sec_key2, pub_keys, threshold, &mut rng)
+            .expect("Failed to create DKG state");
+
+        // Get the first votes: Parts
+        let part0 = dkg_state0.first_vote().expect("Failed to get first vote");
+        let part1 = dkg_state1.first_vote().expect("Failed to get first vote");
+        let part2 = dkg_state2.first_vote().expect("Failed to get first vote");
+
+        // Force termination on 0 should fail
+        let res = &dkg_state0.force_termination();
+        assert!(matches!(
+            res,
+            Err(Error::FailedForceGenerationBecauseMissingAcks)
+        ));
+
+        // Handle the other participants Parts, obtain Acks
+        let _ = &dkg_state0.handle_signed_vote(part1.clone(), &mut rng);
+        let res = &dkg_state0.handle_signed_vote(part2.clone(), &mut rng);
+        let acks0 =
+            assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(acks)]) => *acks.clone());
+        // Participant 1 handles Parts
+        let _ = &dkg_state1.handle_signed_vote(part0.clone(), &mut rng);
+        let res = &dkg_state1.handle_signed_vote(part2, &mut rng);
+        let acks1 =
+            assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(acks)]) => *acks.clone());
+        // Participant 2 handles Parts
+        let _ = &dkg_state2.handle_signed_vote(part0, &mut rng);
+        let res = &dkg_state2.handle_signed_vote(part1, &mut rng);
+        let acks2 =
+            assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(acks)]) => *acks.clone());
+
+        // Force termination on 0 should fail
+        let res = &dkg_state0.force_termination();
+        assert!(matches!(
+            res,
+            Err(Error::FailedForceGenerationBecauseMissingAcks)
+        ));
+
+        // Now that every participant handled the Parts and submitted their Acks, we handle the Acks
+        // Participant 0 handles Acks
+        let _ = &dkg_state0.handle_signed_vote(acks1.clone(), &mut rng);
+
+        // Force termination on 0 should fail
+        let res = &dkg_state0.force_termination();
+        assert!(matches!(
+            res,
+            Err(Error::FailedForceGenerationBecauseMissingAcks)
+        ));
+
+        let res = &dkg_state0.handle_signed_vote(acks2.clone(), &mut rng);
+        let all_acks0 = assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(all_acks)]) => *all_acks.clone());
+        // Participant 1 handles Acks
+        let _ = &dkg_state1.handle_signed_vote(acks0.clone(), &mut rng);
+        let res = &dkg_state1.handle_signed_vote(acks2, &mut rng);
+        let all_acks1 = assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(all_acks)]) => *all_acks.clone());
+        // Participant 2 handles Acks
+        let _ = &dkg_state2.handle_signed_vote(acks0, &mut rng);
+        let res = &dkg_state2.handle_signed_vote(acks1, &mut rng);
+        let _all_acks2 = assert_match!(res.as_deref(), Ok([VoteResponse::BroadcastVote(all_acks)]) => *all_acks.clone());
+
+        // Force termination on 0 should work (even with 1/3 AllAcks)
+        let res = &dkg_state0.force_termination();
+        let (pubs0, sec0) = assert_match!(res, Ok(Some(keypair)) => keypair);
+
+        // Now that we have all the Acks, we check that everyone has the same set
+        // Handle the set of all acks to check everyone agreed on the same set
+        // Participant 1 handles AllAcks
+        let res = &dkg_state1.handle_signed_vote(all_acks0.clone(), &mut rng);
+        assert!(matches!(
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
+        ));
+
+        // Force termination on 1 should work (even with only 2/3 of the AllAcks)
+        let res = &dkg_state1.force_termination();
+        let (pubs1, sec1) = assert_match!(res, Ok(Some(keypair)) => keypair);
+
+        // Participant 2 handles AllAcks
+        let res = &dkg_state2.handle_signed_vote(all_acks0, &mut rng);
+        assert!(matches!(
+            res.as_deref(),
+            Ok([VoteResponse::WaitingForMoreVotes])
+        ));
+        let _ = &dkg_state2.handle_signed_vote(all_acks1, &mut rng);
+
+        // Force termination on 2 should work (with 3/3 of the AllAcks)
+        let res = &dkg_state2.force_termination();
+        let (pubs2, sec2) = assert_match!(res, Ok(Some(keypair)) => keypair);
+
+        // The pubkey sets should be identical
+        assert_eq!(pubs0, pubs1);
+        assert_eq!(pubs1, pubs2);
+
+        // Two sigs should be enough to sign a message
+        let msg = "signed message";
+        let sig_shares: BTreeMap<usize, SignatureShare> =
+            BTreeMap::from([(0, sec0.sign(msg)), (1, sec1.sign(msg))]);
+        let sig = pubs2
+            .combine_signatures(&sig_shares)
+            .expect("Failed to combine signatures");
+        assert!(pubs2.public_key().verify(&sig, msg));
+
+        let sig_shares: BTreeMap<usize, SignatureShare> =
+            BTreeMap::from([(1, sec1.sign(msg)), (2, sec2.sign(msg))]);
+        let sig = pubs0
+            .combine_signatures(&sig_shares)
+            .expect("Failed to combine signatures");
+        assert!(pubs0.public_key().verify(&sig, msg));
+    }
 
     #[test]
     fn test_recursive_handle_vote() {

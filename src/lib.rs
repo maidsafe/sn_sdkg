@@ -20,24 +20,27 @@ pub use vote::{DkgSignedVote, NodeId};
 // For testing purposes
 pub use vote::DkgVote;
 
+// fancy assert_match that returns inside content
+// usage:
+// `let data = assert_match(item_with_data, Enum::Pattern(data) => data)`
+#[cfg(test)]
+macro_rules! assert_match {
+   ($obj:expr, $pattern:pat $(if $pred:expr)* => $result:expr) => {
+       match $obj {
+           $pattern $(if $pred)* => $result,
+           _ => panic!("Assertion failed")
+       }
+   }
+}
+#[cfg(test)]
+pub(crate) use assert_match;
+
 // Test of sn_sdkg with explanations and usage example
 #[cfg(test)]
 mod tests {
     use super::*;
     use bls::{PublicKey, SecretKey, SignatureShare};
     use std::collections::BTreeMap;
-
-    // fancy assert_match that returns inside content
-    // usage:
-    // `let data = assert_match(item_with_data, Enum::Pattern(data) => data)`
-    macro_rules! assert_match {
-       ($obj:expr, $pattern:pat $(if $pred:expr)* => $result:expr) => {
-           match $obj {
-               $pattern $(if $pred)* => $result,
-               _ => panic!("Assertion failed")
-           }
-       }
-    }
 
     /// This test explains how sn_sdkg should be used
     #[test]
