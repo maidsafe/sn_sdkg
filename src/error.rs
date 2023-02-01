@@ -33,6 +33,9 @@ pub enum Error {
     /// Unexpectedly failed to generate secret key share
     #[error("Unexpectedly failed to generate secret key share")]
     FailedToGenerateSecretKeyShare,
+    /// Failed force generation of keyshare because we are missing acks
+    #[error("Failed force generation of keyshare: missing acks")]
+    FailedForceGenerationBecauseMissingAcks,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

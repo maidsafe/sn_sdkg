@@ -129,7 +129,7 @@ pub enum Error {
 
 impl From<bincode::Error> for Error {
     fn from(err: bincode::Error) -> Error {
-        Error::Serialize(format!("{:?}", err))
+        Error::Serialize(format!("{err:?}"))
     }
 }
 
@@ -533,7 +533,7 @@ pub(crate) mod tests {
         for (id, sk) in sec_keys.into_iter().enumerate() {
             let (sync_key_gen, opt_part) =
                 SyncKeyGen::new(id, sk, pub_keys.clone(), threshold, &mut rng).unwrap_or_else(
-                    |_| panic!("Failed to create `SyncKeyGen` instance for node #{}", id),
+                    |_| panic!("Failed to create `SyncKeyGen` instance for node #{id}"),
                 );
             nodes.insert(id, sync_key_gen);
             parts.push((id, opt_part.unwrap())); // Would be `None` for observer nodes.
@@ -548,7 +548,7 @@ pub(crate) mod tests {
                     .expect("Failed to handle Part")
                 {
                     PartOutcome::Valid(Some(ack)) => acks.push((id, ack)),
-                    PartOutcome::Invalid(fault) => panic!("Invalid Part: {:?}", fault),
+                    PartOutcome::Invalid(fault) => panic!("Invalid Part: {fault:?}"),
                     PartOutcome::Valid(None) => {
                         panic!("We are not an observer, so we should send Ack.")
                     }
@@ -564,7 +564,7 @@ pub(crate) mod tests {
                     .expect("Failed to handle Ack")
                 {
                     AckOutcome::Valid => (),
-                    AckOutcome::Invalid(fault) => panic!("Invalid Ack: {:?}", fault),
+                    AckOutcome::Invalid(fault) => panic!("Invalid Ack: {fault:?}"),
                 }
             }
         }
@@ -579,10 +579,7 @@ pub(crate) mod tests {
         for (&id, node) in &mut nodes {
             assert!(node.is_ready());
             let (pks, opt_sks) = node.generate().unwrap_or_else(|_| {
-                panic!(
-                    "Failed to create `PublicKeySet` and `SecretKeyShare` for node #{}",
-                    id
-                )
+                panic!("Failed to create `PublicKeySet` and `SecretKeyShare` for node #{id}")
             });
             assert_eq!(pks, pub_key_set); // All nodes now know the public keys and public key shares.
             let sks = opt_sks.expect("Not an observer node: We receive a secret key share.");
@@ -614,7 +611,7 @@ pub(crate) mod tests {
         for nodes_num in 2..10 {
             // for threshold in 1..((nodes_num-1)/2+1) {
             for threshold in 1..nodes_num {
-                println!("Testing for threshold {}/{}...", threshold, nodes_num);
+                println!("Testing for threshold {threshold}/{nodes_num}...");
 
                 let (secret_key_shares, pub_key_set) = simulate_dkg_round(nodes_num, threshold)?;
                 let msg = "signed message";
