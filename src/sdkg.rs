@@ -169,7 +169,7 @@ impl Debug for Ack {
 }
 
 /// The information needed to track a single proposer's secret sharing process.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 struct ProposalState {
     /// The proposer's commitment.
     commit: BivarCommitment,
@@ -216,7 +216,7 @@ pub enum AckOutcome {
 /// A synchronous algorithm for dealerless distributed key generation.
 ///
 /// It requires that all nodes handle all messages in the exact same order.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SyncKeyGen<N> {
     /// Our node ID.
     our_id: N,
