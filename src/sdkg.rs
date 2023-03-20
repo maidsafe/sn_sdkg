@@ -168,7 +168,7 @@ impl Debug for Ack {
     }
 }
 
-/// The information needed to track a single proposer's secret sharing process.
+/// All the information needed to track a single proposer's secret sharing process.
 #[derive(Debug, PartialEq, Eq, Clone)]
 struct ProposalState {
     /// The proposer's commitment.
