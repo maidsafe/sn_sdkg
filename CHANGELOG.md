@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [3.1.3](https://github.com/maidsafe/sn_sdkg/compare/v3.1.2...v3.1.3) (2023-03-20)
+
+
+### Bug Fixes
+
+* **node:** arbitrary doc change to force release ([8e80bbf](https://github.com/maidsafe/sn_sdkg/commit/8e80bbf8c9fae49aa2ad004e83be2b27d9df40d7))
+
 ### [3.1.2](https://github.com/maidsafe/sn_sdkg/compare/v3.1.1...v3.1.2) (2023-03-20)
 
 ### [3.1.2](https://github.com/maidsafe/sn_sdkg/compare/v3.1.1...v3.1.2) (2023-03-17)
