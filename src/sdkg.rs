@@ -216,7 +216,7 @@ pub enum AckOutcome {
 /// A synchronous algorithm for dealerless distributed key generation.
 ///
 /// It requires that all nodes handle all messages in the exact same order.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SyncKeyGen<N> {
     /// Our node ID.
     our_id: N,

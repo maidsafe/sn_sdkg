@@ -16,7 +16,7 @@ use crate::vote::{DkgSignedVote, DkgVote, IdAck, IdPart, NodeId};
 
 /// State of the Dkg session, contains the sync keygen and currently known Parts and Acks
 /// Can handle votes coming from other participants
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct DkgState {
     id: NodeId,
     secret_key: SecretKey,
